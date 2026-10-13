@@ -1,5 +1,15 @@
 # 版本记录
 
+## 0.2.64 — 统一播放控件按压反馈
+
+- 上一首、播放/暂停、下一首共用 SwiftUI `ButtonStyle`，由原生 `configuration.isPressed` 驱动；按下时图标缩至 88%、降低亮度并出现轻微底色，松开后恢复。反馈与媒体命令回传解耦。
+- 保留静止时的无边框 SF Symbols、现有点击区域和布局；播放/暂停继续使用图标替换过渡。开启“减少动态效果”时取消缩放和动画，保留明暗提示；禁用状态统一处理。
+- 为前后切歌按钮提供明确的辅助功能名称，玻璃、波形与设备选择逻辑保持不变。
+
+验证：双架构编译、已安装应用及恢复 ZIP 签名检查通过；展开画面与暂停动作已检查，用户手动确认三个按钮的点按反馈一致。
+
+参考：[Apple 按钮设计指南](https://developer.apple.com/design/human-interface-guidelines/buttons)、[SwiftUI ButtonStyle.Configuration.isPressed](https://developer.apple.com/documentation/swiftui/buttonstyleconfiguration/ispressed)。具体幅度和时长按当前面板尺寸调整。
+
 ## 0.2.63 — 播放设备选择
 
 - 展开面板左上角增加 AirPlay 样式的设备按钮，使用原生 AppKit 菜单显示当前声音输出与勾选标记，可通过 Core Audio 在 Mac 扬声器、已连接蓝牙耳机等系统输出之间切换。

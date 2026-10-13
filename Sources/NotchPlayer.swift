@@ -362,7 +362,7 @@ struct MusicView: View {
                 HStack(spacing: 3) {
                     Button(action: media.previous) {
                         Image(systemName: "backward.fill").font(.system(size: 13, weight: .regular)).frame(width: 28, height: 36)
-                    }.help("上一首")
+                    }.accessibilityLabel("上一首").help("上一首")
                     Button(action: media.toggle) {
                         Image(systemName: media.playing ? "pause.fill" : "play.fill")
                             .font(.system(size: 19, weight: .regular))
@@ -371,10 +371,9 @@ struct MusicView: View {
                     }.accessibilityLabel(media.playing ? "暂停" : "播放")
                     Button(action: media.next) {
                         Image(systemName: "forward.fill").font(.system(size: 13, weight: .regular)).frame(width: 28, height: 36)
-                    }.help("下一首")
+                    }.accessibilityLabel("下一首").help("下一首")
                 }
-                // Flat transport symbols keep the native hover/press treatment on the glass surface.
-                .buttonStyle(.borderless)
+                .buttonStyle(TransportButtonStyle())
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(.white.opacity(0.94))
                 .shadow(color: .black.opacity(0.55), radius: 0.8, y: 0.5)
