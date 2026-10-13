@@ -5,6 +5,14 @@
 本机项目目录：`/Users/hongyijia/Desktop/codex working space/NotchNook-REA分析/notchplayer`。
 私有备份仓库：[thorpjia-cloud/notchplayer](https://github.com/thorpjia-cloud/notchplayer)。
 
+## 版本记录与回退
+
+每次应用修改通过相应验证后，同步源码和可恢复应用包到上述私有仓库，并保留独立的 `v<版本>` 标签。纯文档修改保留 Git 提交记录，不增加应用版本。后续操作遵循 [AGENTS.md](AGENTS.md)。
+
+- 应用回退：从 [版本标签](https://github.com/thorpjia-cloud/notchplayer/tags) 选择版本，下载该版本 `Releases/` 中的应用包，按照其恢复说明安装。
+- 源码回退：使用所选标签的源码；如需将主分支恢复至旧行为，追加恢复提交，保留后续历史。
+- 已发布标签、历史应用包和校验值持续保留，方便对照和恢复。
+
 ## 打开与使用
 
 已安装到 `~/Applications/notchplayer.app`。运行 `./打开notchplayer.command`，或直接双击应用。
