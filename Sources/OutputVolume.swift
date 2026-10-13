@@ -6,6 +6,7 @@ import AudioToolbox
 final class OutputVolume: ObservableObject {
     @Published private(set) var value: Double = 0
     @Published private(set) var available = false
+    @Published private(set) var outputName = "未连接设备"
     private var device = AudioObjectID(kAudioObjectUnknown)
     private var selector = kAudioHardwareServiceDeviceProperty_VirtualMainVolume
     private struct Listener {
@@ -71,6 +72,8 @@ final class OutputVolume: ObservableObject {
         if device != current {
             remove(&deviceListeners)
             device = current
+            let name = SystemAudioOutput.name(of: device)
+            if outputName != name { outputName = name }
             // Rebind when speakers/headphones change; volume and mute otherwise arrive as events.
             if observing {
                 for property in [kAudioHardwareServiceDeviceProperty_VirtualMainVolume, kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyMute] {

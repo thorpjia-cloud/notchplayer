@@ -10,6 +10,8 @@ final class NookModel: ObservableObject {
     @Published var pinned = false
     @Published var hovering = false
     @Published var scrubbing = false
+    private(set) var outputPickerPresented = false
+    weak var outputPickerButton: NSButton?
     @Published var dragX: CGFloat = 0
     @Published var dragY: CGFloat = 0
     @Published var closedWidth: CGFloat = 280
@@ -38,7 +40,7 @@ final class NookModel: ObservableObject {
         closeWork?.cancel(); withAnimation(spring) { expanded = true }
     }
     func close(force: Bool = false) {
-        guard force || (!pinned && !scrubbing) else { return }
+        guard force || (!pinned && !scrubbing && !outputPickerPresented) else { return }
         closeWork?.cancel()
         withAnimation(closingAnimation) { expanded = false; dragX = 0; dragY = 0 }
     }
@@ -55,13 +57,17 @@ final class NookModel: ObservableObject {
     }
     func scheduleClose() {
         closeWork?.cancel()
-        guard !pinned && !scrubbing else { return }
+        guard !pinned && !scrubbing && !outputPickerPresented else { return }
         let work = DispatchWorkItem { [weak self] in
-            guard let self, !self.hovering, !self.pinned, !self.scrubbing else { return }
+            guard let self, !self.hovering, !self.pinned, !self.scrubbing, !self.outputPickerPresented else { return }
             self.close()
         }
         closeWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
+    }
+    func setOutputPickerPresented(_ presented: Bool) {
+        outputPickerPresented = presented
+        if presented { closeWork?.cancel() } else { scheduleClose() }
     }
 }
 struct NotchOutline: Shape {
@@ -303,6 +309,16 @@ struct MusicView: View {
                                  closedWidth: model.closedWidth + (model.hovering ? 12 : 0),
                                  closedHeight: model.topHeight,
                                  topHeight: model.topHeight, dragX: model.dragX, dragY: model.dragY))
+            .overlay(alignment: .topLeading) {
+                if model.expanded {
+                    AudioOutputPicker(volume: media.volume, presentationChanged: model.setOutputPickerPresented,
+                                      buttonReady: { model.outputPickerButton = $0 })
+                        .frame(width: 24, height: 24)
+                        .padding(.leading, 28)
+                        .padding(.top, max(0, (model.topHeight - 24) / 2))
+                        .transition(.opacity)
+                }
+            }
             .offset(x: model.dragX * 0.12)
             .contentShape(NotchOutline())
             .contextMenu {
@@ -516,16 +532,18 @@ final class NookPanel: NSPanel {
         get { false }
         set { super.hasShadow = false }
     }
-    var collapsedClick: ((NSPoint) -> Bool)?
-    private var consumedCollapsedPress = false
+    var topEdgeClick: ((NSPoint) -> Bool)?
+    private var consumedTopEdgePress = false
     override func sendEvent(_ event: NSEvent) {
-        // Receive the entire collapsed hit area before SwiftUI's safe-area hit testing.
-        if event.type == .leftMouseDown, collapsedClick?(event.locationInWindow) == true {
-            consumedCollapsedPress = true
+        // NSMenu can consume the matching mouse-up in its own tracking loop.
+        if event.type == .leftMouseDown { consumedTopEdgePress = false }
+        // Top-edge controls need the same window-level routing as the collapsed notch.
+        if event.type == .leftMouseDown, topEdgeClick?(event.locationInWindow) == true {
+            consumedTopEdgePress = true
             return
         }
-        if event.type == .leftMouseUp && consumedCollapsedPress {
-            consumedCollapsedPress = false
+        if event.type == .leftMouseUp && consumedTopEdgePress {
+            consumedTopEdgePress = false
             return
         }
         super.sendEvent(event)
@@ -568,9 +586,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // The panel has a fixed host frame; waveform changes must not remeasure window size constraints.
         hostingView.sizingOptions = []
         panel.contentView = hostingView
-        panel.collapsedClick = { [weak self] point in
-            guard let self, !self.model.expanded else { return false }
+        panel.topEdgeClick = { [weak self] point in
+            guard let self else { return false }
             let screenPoint = self.panel.convertPoint(toScreen: point)
+            if self.openOutputPicker(at: screenPoint) { return true }
+            guard !self.model.expanded else { return false }
             guard self.interactionRect.contains(screenPoint) else { return false }
             self.expand()
             return true
@@ -605,15 +625,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         RunLoop.main.add(mouseTimer!, forMode: .common)
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .keyDown]) { [weak self] event in
             guard let self else { return event }
+            if self.model.outputPickerPresented { return event }
             if event.type == .keyDown && event.keyCode == 53 { self.collapse(); return nil }
             if event.type == .scrollWheel && event.window === self.panel && !self.model.scrubbing { self.scroll(event); return nil }
             return event
         }
         // The menu-bar/notch strip can route real clicks to another process.
-        // Observe only mouse clicks in our collapsed region; keyboard input is never monitored.
+        // Handle only our collapsed region and expanded output button; no global keyboard monitoring.
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
-            guard let self, !self.model.expanded else { return }
+            guard let self else { return }
             let point = NSEvent.mouseLocation
+            if self.openOutputPicker(at: point) { return }
+            guard !self.model.expanded else { return }
             guard self.interactionRect.contains(point) else { return }
             self.expand()
         }
@@ -624,6 +647,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if model.expanded { model.nativeGlassIsActive = true }
     }
     func windowDidResignKey(_ notification: Notification) {
+        guard !model.outputPickerPresented else { return }
         // Hide the inactive material immediately, then let the rim and geometry close normally.
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -650,7 +674,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                y: panel.frame.maxY - model.height,
                width: model.width - 28, height: model.height)
     }
+    private func openOutputPicker(at screenPoint: NSPoint) -> Bool {
+        guard model.expanded, !model.outputPickerPresented,
+              let button = model.outputPickerButton, button.window === panel,
+              button.convert(button.bounds, to: nil).contains(panel.convertPoint(fromScreen: screenPoint)) else { return false }
+        model.setOutputPickerPresented(true)
+        // Leave mouse-event dispatch before entering NSMenu's tracking loop.
+        DispatchQueue.main.async { [weak self, weak button] in
+            guard let self, let button, self.model.expanded else {
+                self?.model.setOutputPickerPresented(false)
+                return
+            }
+            self.panel.makeKey()
+            button.performClick(nil)
+        }
+        return true
+    }
     func trackMouse() {
+        guard !model.outputPickerPresented else { return }
         let point = NSEvent.mouseLocation
         let inside = interactionRect.contains(point)
         // Reassigning this property also commits AppKit window tags even when the value is unchanged.
