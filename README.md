@@ -2,6 +2,9 @@
 
 本地 macOS 原生音乐面板，保留刘海/菜单栏顶部交互，仅包含音乐功能。版本 0.2.61，Apple Silicon，macOS 14+。
 
+本机项目目录：`/Users/hongyijia/Desktop/codex working space/NotchNook-REA分析/notchplayer`。
+私有备份仓库：[thorpjia-cloud/notchplayer](https://github.com/thorpjia-cloud/notchplayer)。
+
 ## 打开与使用
 
 已安装到 `~/Applications/notchplayer.app`。运行 `./打开notchplayer.command`，或直接双击应用。
@@ -27,6 +30,15 @@ AppKit 非激活 NSPanel + SwiftUI。覆写 `constrainFrameRect` 并忽略 Swift
 `MediaService` 接收实时 JSON 流，并按系统时间戳插值播放进度。播放器是否支持切歌和跳转由播放器自身决定。该适配器依赖 macOS 私有接口，系统更新后若出现异常可先退出并重新打开应用。
 
 ## 编译
+
+从私有仓库恢复时，克隆后的项目目录同样为 `notchplayer`：
+
+```sh
+git clone https://github.com/thorpjia-cloud/notchplayer.git
+cd notchplayer
+```
+
+在项目目录中运行：
 
 ```sh
 ./build.sh
