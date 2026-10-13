@@ -1,0 +1,6 @@
+.DS_Store
+/Backups/
+/dist/
+/.build/
+/MediaRemoteAdapter.framework/MediaRemoteAdapter
+*.log
