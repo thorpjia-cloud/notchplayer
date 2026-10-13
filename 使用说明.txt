@@ -1,0 +1,43 @@
+notchplayer — 免费试用版 0.2.62
+
+安装
+1. 打开 notchplayer 的 DMG，把 notchplayer.app 拖入 Applications（应用程序）。
+2. 从应用程序打开 notchplayer。它位于屏幕顶部中央，没有 Dock 和菜单栏图标。
+3. 免费试用包使用本地签名，尚未经过苹果公证。如果 macOS 提示开发者无法验证，请先确认下载来自 thorpjia-cloud/notchplayer，再按苹果官方流程：系统设置 → 隐私与安全性 → 仍要打开。无需终端命令，也不要关闭 Gatekeeper。
+4. 首次播放时允许“系统音频录制”，用于本地实时频谱分析。音频不保存、不上传，不使用麦克风。若拒绝，播放控制仍可用，波形无法显示；之后在系统设置中允许，再右键顶部面板 → 重新连接播放器。
+
+要求
+- macOS 14 或更新；真实频谱需要 macOS 14.2 或更新。
+- Apple Silicon 和 Intel 的通用安装包；当前已在 Apple Silicon Mac 实机验证，Intel 分支通过 Rosetta 启动检查，未在 Intel 实机验证。
+- 原生 Liquid Glass 需要 macOS 26 或更新；旧系统使用兼容玻璃效果。
+
+播放
+先在音乐软件中播放歌曲。把鼠标移到屏幕顶部中央，轻微放大后点击展开；移开约半秒收起。
+面板可播放/暂停、切换上一首下一首、调整进度和系统音量。长歌名、歌手和专辑名会自动滚动。
+右键面板可查看说明、重新连接播放器或退出。
+
+网易云音乐
+必须在网易云音乐的“设置 → 常规 → 播放歌曲时”勾选“启用系统歌曲播放通知栏”。
+此选项关闭时，网易云不会提供完整的系统歌曲信息，面板会显示“还没有正在播放的音乐”。
+
+其他播放器
+跟随 macOS 当前的“正在播放”来源。已实测 Apple Music，以及开启上述选项的网易云音乐 3.1.13。
+其他应用的封面、进度和控制支持取决于其系统媒体接口；当前没有手动选择播放器的功能。
+蓝牙、HDMI 等设备若不支持系统音量调节，音量滑块会禁用。
+
+更新与卸载
+更新：右键面板退出，下载新版后替换应用程序中的 notchplayer.app，再打开。
+卸载：右键面板退出，将应用程序中的 notchplayer.app 移到废纸篓。
+
+下载与反馈
+https://github.com/thorpjia-cloud/notchplayer/releases/latest
+https://github.com/thorpjia-cloud/notchplayer/issues
+
+第三方组件 mediaremote-adapter 使用 BSD-3-Clause 许可证，原许可证随应用附带。
+
+灵感与致谢
+- NotchNook（lo.cafe）：刘海区域交互与展开/收起体验的灵感。https://lo.cafe/notchnook
+- Apple 灵动岛（Dynamic Island）：紧凑状态与展开内容的交互灵感；玻璃界面使用 Apple 原生 SwiftUI Liquid Glass。
+- REA（Reverse Engineer Anything）：原型研究与实现过程中使用的分析工具。https://github.com/morluto/rea
+- mediaremote-adapter / Jonas van den Berg：系统正在播放信息与媒体控制适配，BSD-3-Clause。https://github.com/ungive/mediaremote-adapter
+notchplayer 是非官方项目，与上述产品及其开发者无隶属或赞助关系。相关名称与商标归各自权利人所有。

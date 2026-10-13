@@ -4,6 +4,7 @@ import Foundation
 final class MediaService: ObservableObject {
     let spectrum = AudioSpectrum()
     let volume = OutputVolume()
+    let progress = PlaybackProgress()
     @Published var title = "还没有正在播放的音乐"
     @Published var artist = "在你喜欢的播放器中播放一首歌"
     @Published var album = ""
@@ -14,7 +15,6 @@ final class MediaService: ObservableObject {
     @Published var playing = false
     @Published var available = false
     @Published var duration: Double = 0
-    @Published var position: Double = 0
     @Published var error: String?
     private var bundleID = "com.apple.Music"
     private var elapsed: Double = 0
@@ -22,7 +22,6 @@ final class MediaService: ObservableObject {
     private var rate: Double = 1
     private var stream: Process?
     private var buffer = Data()
-    private var ticker: Timer?
     private var commands: [Process] = []
     private var stopped = false
     private var resources: URL { Bundle.main.resourceURL! }
@@ -31,7 +30,7 @@ final class MediaService: ObservableObject {
 
     func start() {
         stopped = false
-        volume.refresh()
+        volume.start()
         let process = makeProcess(["stream", "--no-diff", "--micros", "--debounce=100"])
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -59,16 +58,15 @@ final class MediaService: ObservableObject {
         }
         do { try process.run(); stream = process }
         catch { self.error = "无法连接系统正在播放" }
-        ticker?.invalidate()
-        ticker = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in self?.updatePosition(); self?.volume.refresh() }
-        RunLoop.main.add(ticker!, forMode: .common)
     }
     func stop() {
         stopped = true
         spectrum.stop()
+        progress.stop()
+        volume.stop()
         stream?.terminationHandler = nil
         if stream?.isRunning == true { stream?.terminate() }
-        stream = nil; buffer.removeAll(); ticker?.invalidate()
+        stream = nil; buffer.removeAll()
         commands.filter(\.isRunning).forEach { $0.terminate() }
         commands.removeAll()
     }
@@ -81,25 +79,28 @@ final class MediaService: ObservableObject {
     }
     private func apply(_ value: [String: Any]) {
         guard let title = value["title"] as? String, !title.isEmpty else {
-            self.title = "还没有正在播放的音乐"; artist = "在你喜欢的播放器中播放一首歌"
-            album = ""; playing = false; available = false; updateArtwork(nil)
-            duration = 0; position = 0
+            assign(\.title, "还没有正在播放的音乐"); assign(\.artist, "在你喜欢的播放器中播放一首歌")
+            assign(\.album, ""); assign(\.playing, false); assign(\.available, false); updateArtwork(nil)
+            assign(\.duration, 0)
+            progress.update(elapsed: 0, timestamp: Date(), rate: 0, duration: 0, playing: false, available: false)
             spectrum.update(bundleID: nil, playing: false)
             return
         }
-        self.title = title
-        artist = value["artist"] as? String ?? "未知歌手"
-        album = value["album"] as? String ?? ""
-        playing = value["playing"] as? Bool ?? false
-        available = true; error = nil
+        assign(\.title, title)
+        assign(\.artist, value["artist"] as? String ?? "未知歌手")
+        assign(\.album, value["album"] as? String ?? "")
+        assign(\.playing, value["playing"] as? Bool ?? false)
+        assign(\.available, true); assign(\.error, nil)
+        let previousBundleID = bundleID
         bundleID = value["parentApplicationBundleIdentifier"] as? String ?? value["bundleIdentifier"] as? String ?? "com.apple.Music"
         spectrum.update(bundleID: bundleID, playing: playing)
-        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
-            source = FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
-        } else { source = "正在播放" }
-        if bundleID == "com.apple.Music" { source = "Apple Music" }
-        duration = (value["durationMicros"] as? NSNumber)?.doubleValue ?? 0
-        duration /= 1_000_000
+        if bundleID != previousBundleID || source == "系统正在播放" {
+            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+                assign(\.source, FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""))
+            } else { assign(\.source, "正在播放") }
+            if bundleID == "com.apple.Music" { assign(\.source, "Apple Music") }
+        }
+        assign(\.duration, ((value["durationMicros"] as? NSNumber)?.doubleValue ?? 0) / 1_000_000)
         elapsed = ((value["elapsedTimeMicros"] as? NSNumber)?.doubleValue ?? 0) / 1_000_000
         if let micros = (value["timestampEpochMicros"] as? NSNumber)?.doubleValue {
             timestamp = Date(timeIntervalSince1970: micros / 1_000_000)
@@ -107,7 +108,7 @@ final class MediaService: ObservableObject {
         rate = (value["playbackRate"] as? NSNumber)?.doubleValue ?? (playing ? 1 : 0)
         if playing && rate == 0 { rate = 1 }
         updateArtwork(value["artworkData"] as? String)
-        updatePosition()
+        progress.update(elapsed: elapsed, timestamp: timestamp, rate: rate, duration: duration, playing: playing, available: available)
     }
     private func updateArtwork(_ encoded: String?) {
         guard encoded != artworkToken else { return }
@@ -119,10 +120,8 @@ final class MediaService: ObservableObject {
         artwork = image
         artworkAccent = ArtworkPalette.accent(from: image)
     }
-    private func updatePosition() {
-        guard available else { return }
-        let current = elapsed + (playing ? max(0, Date().timeIntervalSince(timestamp)) * rate : 0)
-        position = max(0, duration > 0 ? min(duration, current) : current)
+    private func assign<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<MediaService, Value>, _ value: Value) {
+        if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
     }
     private func command(_ args: [String]) {
         guard available else { return }

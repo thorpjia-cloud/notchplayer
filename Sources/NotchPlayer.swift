@@ -10,7 +10,6 @@ final class NookModel: ObservableObject {
     @Published var pinned = false
     @Published var hovering = false
     @Published var scrubbing = false
-    @Published var seekValue: Double = 0
     @Published var dragX: CGFloat = 0
     @Published var dragY: CGFloat = 0
     @Published var closedWidth: CGFloat = 280
@@ -306,6 +305,14 @@ struct MusicView: View {
                                  topHeight: model.topHeight, dragX: model.dragX, dragY: model.dragY))
             .offset(x: model.dragX * 0.12)
             .contentShape(NotchOutline())
+            .contextMenu {
+                Button("使用说明") {
+                    if let url = Bundle.main.url(forResource: "使用说明", withExtension: "txt") { NSWorkspace.shared.open(url) }
+                }
+                Button("重新连接播放器", action: media.reconnect)
+                Divider()
+                Button("退出 notchplayer") { NSApp.terminate(nil) }
+            }
             .overlay {
                 if !model.expanded {
                     Button { model.open() } label: {
@@ -321,7 +328,6 @@ struct MusicView: View {
         .ignoresSafeArea(.all)
         .preferredColorScheme(.dark)
         .environment(\.appearsActive, true)
-        .onChange(of: media.position) { _, value in if !model.scrubbing { model.seekValue = value } }
     }
     private var header: some View {
         HStack {
@@ -373,13 +379,11 @@ struct MusicView: View {
             }
             .frame(height: 60)
             HStack(spacing: 8) {
-                Slider(value: $model.seekValue, in: 0...max(1, media.duration), onEditingChanged: { editing in
+                PlaybackProgressControl(progress: media.progress, duration: media.duration,
+                                        available: media.available, accent: accent, seek: media.seek) { editing in
                     model.scrubbing = editing
-                    if !editing { media.seek(model.seekValue); model.scheduleClose() }
-                }).tint(accent).controlSize(.mini)
-                    .environment(\.appearsActive, true)
-                    .animation(.easeInOut(duration: 0.35), value: accent)
-                    .disabled(!media.available || media.duration <= 0).accessibilityLabel("播放进度")
+                    if !editing { model.scheduleClose() }
+                }
                 VolumeControl(volume: media.volume) { editing in
                     model.scrubbing = editing
                     if !editing { model.scheduleClose() }
@@ -405,6 +409,32 @@ struct MusicView: View {
     }
     private var bars: some View {
         SpectrumBars(spectrum: media.spectrum, accent: accent)
+    }
+}
+
+struct PlaybackProgressControl: View {
+    @ObservedObject var progress: PlaybackProgress
+    var duration: Double
+    var available: Bool
+    var accent: Color
+    var seek: (Double) -> Void
+    var editingChanged: (Bool) -> Void
+    private var seekValue = State<Double>(initialValue: 0)
+    private var scrubbing = State<Bool>(initialValue: false)
+
+    var body: some View {
+        Slider(value: seekValue.projectedValue, in: 0...max(1, duration), onEditingChanged: { editing in
+            scrubbing.wrappedValue = editing
+            editingChanged(editing)
+            if !editing { seek(seekValue.wrappedValue) }
+        }).tint(accent).controlSize(.mini)
+            .environment(\.appearsActive, true)
+            .animation(.easeInOut(duration: 0.35), value: accent)
+            .disabled(!available || duration <= 0).accessibilityLabel("播放进度")
+            .onAppear { seekValue.wrappedValue = progress.position }
+            .onChange(of: progress.position) { _, value in
+                if !scrubbing.wrappedValue { seekValue.wrappedValue = value }
+            }
     }
 }
 
@@ -534,7 +564,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.appearance = NSAppearance(named: .darkAqua)
         panel.title = "notchplayer · 音乐"
         panel.delegate = self
-        panel.contentView = NookHostingView(rootView: MusicView(model: model, media: media))
+        let hostingView = NookHostingView(rootView: MusicView(model: model, media: media))
+        // The panel has a fixed host frame; waveform changes must not remeasure window size constraints.
+        hostingView.sizingOptions = []
+        panel.contentView = hostingView
         panel.collapsedClick = { [weak self] point in
             guard let self, !self.model.expanded else { return false }
             let screenPoint = self.panel.convertPoint(toScreen: point)
@@ -544,6 +577,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         model.expansionChanged = { [weak self] in
             guard let self else { return }
+            self.media.progress.setVisible(self.model.expanded)
             self.panel.hasShadow = false
             self.panel.invalidateShadow()
             self.focusRelease?.cancel()
@@ -619,7 +653,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func trackMouse() {
         let point = NSEvent.mouseLocation
         let inside = interactionRect.contains(point)
-        panel.ignoresMouseEvents = !inside
+        // Reassigning this property also commits AppKit window tags even when the value is unchanged.
+        if panel.ignoresMouseEvents != !inside { panel.ignoresMouseEvents = !inside }
         if !inside { dismissedUntilExit = false }
         model.hover(inside && !dismissedUntilExit)
 
