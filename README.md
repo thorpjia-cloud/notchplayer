@@ -6,12 +6,14 @@
 
 ## 安装
 
-1. 在 Releases 下载 `notchplayer-0.2.65-macOS-universal.dmg`。
+1. 在 Releases 下载 `notchplayer-0.2.66-macOS-universal.dmg`。
 2. 打开 DMG，把 **notchplayer.app** 拖进 **Applications**，然后从“应用程序”打开。
 3. 首次播放歌曲后，封面和波形从刘海两侧浮现；鼠标移入后点击展开。暂停、切歌或切换到其他应用时保留，退出当前播放器后自动隐藏。应用不显示 Dock 或菜单栏图标；右键面板可查看说明、重新连接播放器或退出。
 4. 首次播放时，允许系统音频录制，让频谱反映当前歌曲的高低频。
 
 免费试用包采用本地 ad-hoc 签名，未经过 Apple 公证。若系统提示开发者无法验证，请先确认下载来源，然后按 [Apple 官方流程](https://support.apple.com/102445) 在“系统设置 → 隐私与安全性”中选择“仍要打开”。无需终端命令。不要关闭 Gatekeeper。
+
+**下次启动：** 在 Finder 的“应用程序”中双击带刘海与波形图标的 **notchplayer**。如需开机后自动运行，在“系统设置 → 通用 → 登录项 → 登录时打开”中添加它；登录后在后台等待，播放音乐时显示面板。
 
 ## 系统要求与播放器
 
@@ -38,7 +40,7 @@
 
 ## 从源码构建
 
-需要包含所用 SwiftUI API 的新版 Xcode Command Line Tools / macOS SDK：
+需要完整 Xcode（本版使用 Xcode 27 编译原生 Icon Composer 图标）及对应 macOS SDK：
 
 ```sh
 git clone https://github.com/thorpjia-cloud/notchplayer.git
@@ -47,6 +49,8 @@ cd notchplayer
 ```
 
 生成 `dist/notchplayer.app`，同时包含 arm64 与 x86_64。依赖源码已随仓库包含，无需初始化子模块。构建不安装应用、不修改系统权限。
+
+应用图标采用原创刘海与波形，蓝橙光痕搭配默认白底与深色黑底；波形的玻璃质感由 Icon Composer 原生渲染。分层图标源文件和设计说明见 [Resources](Resources/README.md)。
 
 媒体适配器依赖 macOS 私有 MediaRemote 接口，系统更新后可能需要适配；依赖版本和许可见 [THIRD_PARTY.md](THIRD_PARTY.md)。
 

@@ -1,5 +1,15 @@
 # 版本记录
 
+## 0.2.66 — 原生应用图标与启动入口
+
+- 增加原创加宽刘海与五根玻璃波形图标，蓝橙光痕使用透明分层素材；默认白底、Dark 黑底，Mono 跟随系统。波形的高光、折射和透明度使用 Icon Composer 原生材质。
+- 构建编译 `.icon` 源文件，将 `Assets.car` 与兼容旧系统的 `.icns` 随应用签名；图标源文件、预览及素材生成说明一并保留。
+- 本机安装入口移至 `/Applications/notchplayer.app`；启动脚本优先查找“应用程序”，兼容原来的用户目录安装。补充从 Finder 启动和添加系统登录项的说明。
+
+验证：双架构编译通过；已安装应用与解压恢复包的签名通过，DMG 和全部历史包校验通过；Icon Composer 检查默认、深色和单色外观，Finder 已显示新图标，最终应用启动成功。本机系统“登录时打开”列表已确认包含 notchplayer；未执行整机重启测试。
+
+参考：[Apple Icon Composer](https://developer.apple.com/icon-composer/)、[应用图标设计指南](https://developer.apple.com/design/human-interface-guidelines/app-icons/)。
+
 ## 0.2.65 — 随音乐会话显示与隐藏
 
 - 启动后先在后台等待；检测到运行中的播放器开始播放歌曲，封面和波形以收起状态从实体刘海两侧出现。
