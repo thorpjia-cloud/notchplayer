@@ -1,7 +1,11 @@
 import AppKit
 import SwiftUI
+import Combine
 
 final class NookModel: ObservableObject {
+    @Published var musicVisible = false
+    @Published var acceptsInteraction = false
+    @Published var hardwareNotchWidth: CGFloat = 164
     @Published var expanded = false {
         didSet { if oldValue != expanded { expansionChanged?() } }
     }
@@ -37,7 +41,13 @@ final class NookModel: ObservableObject {
     }
     private var lastFeedback = Date.distantPast
     func open() {
+        guard musicVisible && acceptsInteraction else { return }
         closeWork?.cancel(); withAnimation(spring) { expanded = true }
+    }
+    func prepareForHide() {
+        closeWork?.cancel()
+        pinned = false; scrubbing = false; hovering = false
+        expanded = false; dragX = 0; dragY = 0
     }
     func close(force: Bool = false) {
         guard force || (!pinned && !scrubbing && !outputPickerPresented) else { return }
@@ -45,6 +55,7 @@ final class NookModel: ObservableObject {
         withAnimation(closingAnimation) { expanded = false; dragX = 0; dragY = 0 }
     }
     func hover(_ value: Bool) {
+        guard acceptsInteraction else { return }
         guard value != hovering else { return }
         withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { hovering = value }
         if value {
@@ -57,7 +68,7 @@ final class NookModel: ObservableObject {
     }
     func scheduleClose() {
         closeWork?.cancel()
-        guard !pinned && !scrubbing && !outputPickerPresented else { return }
+        guard acceptsInteraction && !pinned && !scrubbing && !outputPickerPresented else { return }
         let work = DispatchWorkItem { [weak self] in
             guard let self, !self.hovering, !self.pinned, !self.scrubbing, !self.outputPickerPresented else { return }
             self.close()
@@ -72,9 +83,11 @@ final class NookModel: ObservableObject {
 }
 struct NotchOutline: Shape {
     var drawsTopEdge = true
+    var compactTension: CGFloat = 0
     func path(in rect: CGRect) -> Path {
         let w = rect.width, h = rect.height
-        let shoulder: CGFloat = 16, bottom = min(46, h * 0.55)
+        let shoulder: CGFloat = 16 - 4 * compactTension
+        let bottom = min(46, h * 0.55) + min(3, h * 0.08) * compactTension
         var p = Path()
         p.move(to: CGPoint(x: w, y: 0))
         p.addCurve(to: CGPoint(x: w - shoulder, y: shoulder), control1: CGPoint(x: w - shoulder, y: 0), control2: CGPoint(x: w - shoulder, y: 6))
@@ -119,6 +132,7 @@ struct SiriGlassSurface: View, Animatable {
     var topHeight: CGFloat
     var progress: CGFloat
     var artworkTint: Color
+    var compactTension: CGFloat = 0
     var animatableData: CGFloat {
         get { progress }
         set { progress = newValue }
@@ -156,7 +170,7 @@ struct SiriGlassSurface: View, Animatable {
             }
             .clipShape(NotchOutline())
             .opacity(reveal)
-            NotchOutline()
+            NotchOutline(compactTension: compactTension)
                 .fill(Color(red: 0.025, green: 0.027, blue: 0.03))
                 .opacity(1 - reveal)
         }
@@ -255,28 +269,36 @@ struct GlassReflectionStroke: View {
 }
 
 struct NotchMorph: AnimatableModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var nativeGlassIsActive: Bool
     var artworkTint: Color
     var progress: CGFloat
+    var presence: CGFloat
+    var notchWidth: CGFloat
     var closedWidth: CGFloat
     var closedHeight: CGFloat
     var topHeight: CGFloat
     var dragX: CGFloat
     var dragY: CGFloat
-    var animatableData: AnimatablePair<CGFloat, AnimatablePair<CGFloat, CGFloat>> {
-        get { .init(progress, .init(closedWidth, closedHeight)) }
-        set { progress = newValue.first; closedWidth = newValue.second.first; closedHeight = newValue.second.second }
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get { .init(.init(progress, presence), .init(closedWidth, closedHeight)) }
+        set {
+            progress = newValue.first.first; presence = newValue.first.second
+            closedWidth = newValue.second.first; closedHeight = newValue.second.second
+        }
     }
     func body(content: Content) -> some View {
         let size = GlassMotion.size(progress: progress,
                                     closed: CGSize(width: closedWidth, height: closedHeight),
                                     open: CGSize(width: 360, height: topHeight + 100))
+        let tension = reduceMotion ? 0 : GlassMotion.presenceTension(progress: presence) * (1 - min(1, max(0, progress)))
         content
-            .frame(width: size.width + abs(dragX) * 0.1, height: size.height + dragY * 0.12, alignment: .top)
-            .clipShape(NotchOutline())
+            .frame(width: (reduceMotion ? size.width : GlassMotion.presenceWidth(progress: presence, notchWidth: notchWidth, visibleWidth: size.width)) + abs(dragX) * 0.1,
+                   height: size.height + dragY * 0.12, alignment: .top)
+            .clipShape(NotchOutline(compactTension: tension))
             .background {
                 SiriGlassSurface(nativeGlassIsActive: nativeGlassIsActive, topHeight: topHeight,
-                                 progress: progress, artworkTint: artworkTint)
+                                 progress: progress, artworkTint: artworkTint, compactTension: tension)
             }
             .background { GlassLiftShadow(progress: progress) }
             .overlay { GlassReflectionStroke(topHeight: topHeight, progress: progress) }
@@ -288,6 +310,22 @@ struct NotchMorph: AnimatableModifier {
                     .opacity(glassReveal(progress, from: 0, to: 1))
                     .allowsHitTesting(false).accessibilityHidden(true)
             }
+            .opacity(glassReveal(presence, from: 0, to: 0.28))
+    }
+}
+
+private struct CompactWingReveal: AnimatableModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var progress: CGFloat
+    var inwardOffset: CGFloat
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+    func body(content: Content) -> some View {
+        let reveal = glassReveal(progress, from: 0.24, to: 0.94)
+        content.opacity(reveal)
+            .offset(x: reduceMotion ? 0 : inwardOffset * (1 - reveal))
     }
 }
 
@@ -306,6 +344,8 @@ struct MusicView: View {
             }
             .modifier(NotchMorph(nativeGlassIsActive: model.nativeGlassIsActive, artworkTint: glassTint,
                                  progress: model.expanded ? 1 : 0,
+                                 presence: model.musicVisible ? 1 : 0,
+                                 notchWidth: model.hardwareNotchWidth,
                                  closedWidth: model.closedWidth + (model.hovering ? 12 : 0),
                                  closedHeight: model.topHeight,
                                  topHeight: model.topHeight, dragX: model.dragX, dragY: model.dragY))
@@ -338,6 +378,8 @@ struct MusicView: View {
                     .accessibilityLabel("展开音乐播放器")
                 }
             }
+            .allowsHitTesting(model.acceptsInteraction)
+            .accessibilityHidden(!model.acceptsInteraction)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -349,8 +391,10 @@ struct MusicView: View {
         HStack {
             if !model.expanded {
                 cover(size: min(22, model.topHeight - 8)).accessibilityLabel("展开音乐播放器")
+                    .modifier(CompactWingReveal(progress: model.musicVisible ? 1 : 0, inwardOffset: 12))
                 Spacer(minLength: 0)
                 bars.frame(width: 20, height: 16).accessibilityLabel(media.playing ? "正在播放" : "播放已暂停")
+                    .modifier(CompactWingReveal(progress: model.musicVisible ? 1 : 0, inwardOffset: -12))
             }
         }
         // Keep the hardware notch area clear while the music controls sit below it.
@@ -570,6 +614,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var gestureEnd: DispatchWorkItem?
     var focusRelease: DispatchWorkItem?
     var dismissedUntilExit = false
+    var presenceSubscription: AnyCancellable?
+    var presenceGeneration = 0
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         panel = NookPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -586,7 +632,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         hostingView.sizingOptions = []
         panel.contentView = hostingView
         panel.topEdgeClick = { [weak self] point in
-            guard let self else { return false }
+            guard let self, self.model.acceptsInteraction else { return false }
             let screenPoint = self.panel.convertPoint(toScreen: point)
             if self.openOutputPicker(at: screenPoint) { return true }
             guard !self.model.expanded else { return false }
@@ -618,12 +664,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         panel.escape = { [weak self] in self?.collapse() }
         model.requestClose = { [weak self] in self?.collapse() }
-        placeWindow(); panel.orderFrontRegardless()
+        placeWindow()
+        panel.ignoresMouseEvents = true
+        presenceSubscription = media.$sessionActive.removeDuplicates().sink { [weak self] in self?.setMusicPresence($0) }
         media.start()
-        mouseTimer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.trackMouse() }
-        RunLoop.main.add(mouseTimer!, forMode: .common)
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .keyDown]) { [weak self] event in
-            guard let self else { return event }
+            guard let self, self.model.acceptsInteraction else { return event }
             if self.model.outputPickerPresented { return event }
             if event.type == .keyDown && event.keyCode == 53 { self.collapse(); return nil }
             if event.type == .scrollWheel && event.window === self.panel && !self.model.scrubbing { self.scroll(event); return nil }
@@ -632,7 +678,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // The menu-bar/notch strip can route real clicks to another process.
         // Handle only our collapsed region and expanded output button; no global keyboard monitoring.
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
-            guard let self else { return }
+            guard let self, self.model.acceptsInteraction else { return }
             let point = NSEvent.mouseLocation
             if self.openOutputPicker(at: point) { return }
             guard !self.model.expanded else { return }
@@ -640,7 +686,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self.expand()
         }
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in self?.placeWindow() }
-        // Begin in the collapsed menu-bar position for the intended daily interaction.
+        // The media stream stays connected while the window is absent.
+    }
+    private func setMusicPresence(_ visible: Bool) {
+        presenceGeneration += 1
+        let generation = presenceGeneration
+        model.acceptsInteraction = false
+        panel.ignoresMouseEvents = true
+        mouseTimer?.invalidate(); mouseTimer = nil
+        gestureEnd?.cancel()
+        panel.contentView?.menu?.cancelTracking()
+        model.outputPickerButton?.menu?.cancelTracking()
+        if visible {
+            dismissedUntilExit = true
+            model.prepareForHide()
+            panel.orderFrontRegardless()
+            panel.displayIfNeeded()
+            // Commit the hidden geometry before starting a reveal, without recreating the window.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.presenceGeneration == generation else { return }
+                let animation: Animation = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                    ? .easeOut(duration: 0.18) : .smooth(duration: 0.82)
+                withAnimation(animation, completionCriteria: .removed) {
+                    self.model.musicVisible = true
+                } completion: { [weak self] in
+                    guard let self, self.presenceGeneration == generation else { return }
+                    self.model.acceptsInteraction = true
+                    let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.trackMouse() }
+                    self.mouseTimer = timer
+                    RunLoop.main.add(timer, forMode: .common)
+                }
+            }
+        } else {
+            let animation: Animation = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+                ? .easeOut(duration: 0.15) : .smooth(duration: 0.62)
+            withAnimation(animation, completionCriteria: .removed) {
+                model.prepareForHide()
+                model.musicVisible = false
+            } completion: { [weak self] in
+                guard let self, self.presenceGeneration == generation else { return }
+                self.panel.orderOut(nil)
+                self.focusRelease?.cancel()
+                self.panel.acceptsKeyboardFocus = false
+                self.panel.resignKey()
+                self.model.nativeGlassIsActive = false
+            }
+        }
     }
     func windowDidBecomeKey(_ notification: Notification) {
         if model.expanded { model.nativeGlassIsActive = true }
@@ -661,6 +752,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         model.topHeight = menuBarInset > 0 ? min(reservedTop, menuBarInset) : reservedTop
         var notchWidth: CGFloat = 164
         if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea { notchWidth = max(130, right.minX - left.maxX) }
+        model.hardwareNotchWidth = notchWidth
         // Each wing needs 28 pt outer inset, a 22 pt cover, and 10 pt clearance from hardware.
         model.closedWidth = notchWidth + 2 * (28 + 22 + 10)
         panel.setFrame(NSRect(x: screen.frame.midX - 330, y: screen.frame.maxY - 320, width: 660, height: 320), display: true)
@@ -674,7 +766,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                width: model.width - 28, height: model.height)
     }
     private func openOutputPicker(at screenPoint: NSPoint) -> Bool {
-        guard model.expanded, !model.outputPickerPresented,
+        guard model.acceptsInteraction, model.expanded, !model.outputPickerPresented,
               let button = model.outputPickerButton, button.window === panel,
               button.convert(button.bounds, to: nil).contains(panel.convertPoint(fromScreen: screenPoint)) else { return false }
         model.setOutputPickerPresented(true)
@@ -690,7 +782,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return true
     }
     func trackMouse() {
-        guard !model.outputPickerPresented else { return }
+        guard model.acceptsInteraction, !model.outputPickerPresented else { return }
         let point = NSEvent.mouseLocation
         let inside = interactionRect.contains(point)
         // Reassigning this property also commits AppKit window tags even when the value is unchanged.
@@ -723,6 +815,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func reconnect() { media.reconnect() }
     @objc func quit() { NSApp.terminate(nil) }
     func applicationWillTerminate(_ notification: Notification) {
+        presenceSubscription?.cancel()
         media.stop(); mouseTimer?.invalidate(); focusRelease?.cancel()
         if let monitor { NSEvent.removeMonitor(monitor) }
         if let globalClickMonitor { NSEvent.removeMonitor(globalClickMonitor) }

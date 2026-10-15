@@ -111,6 +111,8 @@ struct AudioOutputPicker: NSViewRepresentable {
             defer { volume?.refresh(); presentationChanged(false) }
             selectionError = nil
             let menu = NSMenu()
+            button.menu = menu
+            defer { button.menu = nil }
             menu.autoenablesItems = false
             let heading = NSMenuItem(title: "声音输出", action: nil, keyEquivalent: "")
             heading.isEnabled = false

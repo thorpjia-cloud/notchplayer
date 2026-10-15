@@ -2,6 +2,18 @@ import Foundation
 import simd
 
 enum GlassMotion {
+    static func presenceWidth(progress: CGFloat, notchWidth: CGFloat, visibleWidth: CGFloat) -> CGFloat {
+        let p = min(1, max(0, progress))
+        // The spring already eases time; a second ease-out made the wings jump to full width.
+        return notchWidth + (visibleWidth - notchWidth) * p
+    }
+
+    static func presenceTension(progress: CGFloat) -> CGFloat {
+        let p = min(1, max(0, progress))
+        // Round the moving shoulders, then settle back to the exact resting outline.
+        return 16 * p * p * (1 - p) * (1 - p)
+    }
+
     static func size(progress: CGFloat, closed: CGSize, open: CGSize) -> CGSize {
         let p = min(1, max(0, progress))
         // Lateral release precedes depth; reversing the same path gathers the lower lip first.

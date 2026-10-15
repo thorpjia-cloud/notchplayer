@@ -2,6 +2,16 @@ import Foundation
 
 @main struct Check {
     static func main() {
+        precondition(GlassMotion.presenceWidth(progress: 0, notchWidth: 172, visibleWidth: 292) == 172)
+        precondition(GlassMotion.presenceWidth(progress: 1, notchWidth: 172, visibleWidth: 292) == 292)
+        precondition(GlassMotion.presenceTension(progress: 0) == 0)
+        precondition(GlassMotion.presenceTension(progress: 1) == 0)
+        for step in 0...100 {
+            let p = CGFloat(step) / 100
+            let width = GlassMotion.presenceWidth(progress: p, notchWidth: 172, visibleWidth: 292)
+            precondition((172...292).contains(width))
+            precondition((0...1).contains(GlassMotion.presenceTension(progress: p)))
+        }
         for top: CGFloat in [32, 44] {
             let closed = CGSize(width: 292, height: top), open = CGSize(width: 360, height: top + 100)
             let start = GlassMotion.size(progress: 0, closed: closed, open: open)

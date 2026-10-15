@@ -14,6 +14,7 @@ final class MediaService: ObservableObject {
     private var artworkToken: String?
     @Published var playing = false
     @Published var available = false
+    @Published private(set) var sessionActive = false
     @Published var duration: Double = 0
     @Published var error: String?
     private var bundleID = "com.apple.Music"
@@ -24,6 +25,8 @@ final class MediaService: ObservableObject {
     private var buffer = Data()
     private var commands: [Process] = []
     private var stopped = false
+    private var session = PlaybackSession()
+    private var terminationObserver: NSObjectProtocol?
     private var resources: URL { Bundle.main.resourceURL! }
     private var script: URL { resources.appendingPathComponent("mediaremote-adapter.pl") }
     private var framework: URL { resources.appendingPathComponent("MediaRemoteAdapter.framework") }
@@ -31,6 +34,15 @@ final class MediaService: ObservableObject {
     func start() {
         stopped = false
         volume.start()
+        terminationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  self.session.processDidExit(app.processIdentifier) else { return }
+            self.assign(\.sessionActive, false)
+            self.clearPlayback()
+        }
         let process = makeProcess(["stream", "--no-diff", "--micros", "--debounce=100"])
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -61,6 +73,8 @@ final class MediaService: ObservableObject {
     }
     func stop() {
         stopped = true
+        if let terminationObserver { NSWorkspace.shared.notificationCenter.removeObserver(terminationObserver) }
+        terminationObserver = nil
         spectrum.stop()
         progress.stop()
         volume.stop()
@@ -78,12 +92,14 @@ final class MediaService: ObservableObject {
         return process
     }
     private func apply(_ value: [String: Any]) {
+        if let processID = session.processID,
+           NSRunningApplication(processIdentifier: processID)?.isTerminated != false {
+            session.processDidExit(processID)
+            assign(\.sessionActive, false)
+        }
         guard let title = value["title"] as? String, !title.isEmpty else {
-            assign(\.title, "还没有正在播放的音乐"); assign(\.artist, "在你喜欢的播放器中播放一首歌")
-            assign(\.album, ""); assign(\.playing, false); assign(\.available, false); updateArtwork(nil)
-            assign(\.duration, 0)
-            progress.update(elapsed: 0, timestamp: Date(), rate: 0, duration: 0, playing: false, available: false)
-            spectrum.update(bundleID: nil, playing: false)
+            // A metadata gap is not a stopped player; keep its controls and timeline usable.
+            if !session.isActive { clearPlayback() }
             return
         }
         assign(\.title, title)
@@ -109,6 +125,17 @@ final class MediaService: ObservableObject {
         if playing && rate == 0 { rate = 1 }
         updateArtwork(value["artworkData"] as? String)
         progress.update(elapsed: elapsed, timestamp: timestamp, rate: rate, duration: duration, playing: playing, available: available)
+        let application = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
+            ?? (value["processIdentifier"] as? NSNumber).flatMap { NSRunningApplication(processIdentifier: $0.int32Value) }
+        session.observe(processID: application?.processIdentifier, hasTrack: true, playing: playing)
+        assign(\.sessionActive, session.isActive)
+    }
+    private func clearPlayback() {
+        assign(\.playing, false); assign(\.available, false)
+        assign(\.title, "还没有正在播放的音乐"); assign(\.artist, "在你喜欢的播放器中播放一首歌")
+        assign(\.album, ""); assign(\.duration, 0); updateArtwork(nil)
+        progress.update(elapsed: 0, timestamp: Date(), rate: 0, duration: duration, playing: false, available: false)
+        spectrum.update(bundleID: nil, playing: false)
     }
     private func updateArtwork(_ encoded: String?) {
         guard encoded != artworkToken else { return }
