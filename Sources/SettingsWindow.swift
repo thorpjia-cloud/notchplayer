@@ -5,20 +5,22 @@ import SwiftUI
 final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     let updater: AppUpdater
+    private let loginItem = LoginItemSettings()
 
     init(updater: AppUpdater) { self.updater = updater }
 
     func show() {
         if window == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 390),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 520),
                                   styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
             window.title = "notchplayer 设置"
             window.isReleasedWhenClosed = false
             window.delegate = self
-            window.contentView = NSHostingView(rootView: SettingsView(updater: updater))
+            window.contentView = NSHostingView(rootView: SettingsView(updater: updater, loginItem: loginItem))
             window.center()
             self.window = window
         }
+        loginItem.refresh()
         // A temporary Dock presence makes the settings window easy to find without changing background playback.
         NSApp.setActivationPolicy(.regular)
         window?.makeKeyAndOrderFront(nil)
@@ -28,10 +30,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
     }
+
+    func windowDidBecomeKey(_ notification: Notification) { loginItem.refresh() }
 }
 
 private struct SettingsView: View {
     @ObservedObject var updater: AppUpdater
+    @ObservedObject var loginItem: LoginItemSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -42,6 +47,21 @@ private struct SettingsView: View {
                     Text("版本 \(updater.currentVersion)").foregroundStyle(.secondary)
                 }
                 Spacer()
+            }
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("开机自启动", isOn: Binding(get: { loginItem.isEnabled }, set: loginItem.setEnabled))
+                        .toggleStyle(.checkbox)
+                        .disabled(loginItem.isChanging)
+                    Text(loginItem.detail)
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if loginItem.needsApproval || loginItem.errorMessage != nil {
+                        Button("打开系统登录项设置", action: loginItem.openSystemSettings)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            } label: {
+                Label("启动", systemImage: "power").font(.headline)
             }
             GroupBox {
                 VStack(alignment: .leading, spacing: 15) {
@@ -85,7 +105,10 @@ private struct SettingsView: View {
         }
         .padding(26)
         .frame(width: 520, alignment: .topLeading)
-        .frame(minHeight: 390)
+        .frame(minHeight: 520)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            loginItem.refresh()
+        }
     }
 }
