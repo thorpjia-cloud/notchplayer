@@ -11,7 +11,7 @@
 
 ## 版本与可恢复文件
 
-- 每轮通过验证的应用改动递增版本号，保持 `build.sh`、README 和应用版本一致；当前基线为 `0.2.66`。纯文档或项目管理规则修改保留提交记录即可，不必增加应用版本。
+- 每轮通过验证的应用改动递增版本号，保持 `build.sh`、README 和应用版本一致；当前基线为 `0.2.67`。纯文档或项目管理规则修改保留提交记录即可，不必增加应用版本。
 - 为每个应用版本记录改动和实际验证结果，并制作 `Releases/notchplayer-<版本>-macOS-universal.zip（早期版本为 arm64 包）`，保留已签名的应用。
 - 在 `Releases/SHA256SUMS` 中追加对应校验值，并更新恢复说明；保留既有版本的压缩包及校验值，不覆盖或删除历史包。
 - 提交源码、依赖变更、版本说明及恢复包，创建不可变的 annotated tag `v<版本>`，让标签指向对应的版本提交。
@@ -23,3 +23,5 @@
 - 应用安装路径为 `/Applications/notchplayer.app`，启动入口为 `打开notchplayer.command`，兼容旧的 `~/Applications/notchplayer.app` 安装；构建使用项目相对路径。
 - `local.nooklab.prototype` 是沿用的应用权限身份，不因名称或目录调整而更改。
 - 本地 `Backups/` 和 `dist/` 不纳入 Git；远端恢复材料使用 `Releases/`。
+
+- 0.2.67 起使用 Sparkle 更新。应用版本及 `CFBundleVersion` 均需递增；使用 `Tools/package-release.sh` 生成签名更新列表。GitHub Release 必须同时上传 `appcast.xml` 和对应 ZIP，附件就绪后再发布为 Latest；签名私钥留在钥匙串，禁止提交。

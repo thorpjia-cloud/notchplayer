@@ -21,6 +21,8 @@ final class NookModel: ObservableObject {
     @Published var closedWidth: CGFloat = 280
     @Published var topHeight: CGFloat = 32
     var requestClose: (() -> Void)?
+    var showSettings: (() -> Void)?
+    var checkForUpdates: (() -> Void)?
     private var closeWork: DispatchWorkItem?
     var spring: Animation {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -362,6 +364,9 @@ struct MusicView: View {
             .offset(x: model.dragX * 0.12)
             .contentShape(NotchOutline())
             .contextMenu {
+                Button("设置…") { model.showSettings?() }
+                Button("检查更新…") { model.checkForUpdates?() }
+                Divider()
                 Button("使用说明") {
                     if let url = Bundle.main.url(forResource: "使用说明", withExtension: "txt") { NSWorkspace.shared.open(url) }
                 }
@@ -601,9 +606,13 @@ final class NookPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) { escape?() }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let model = NookModel()
     let media = MediaService()
+    let appUpdater = AppUpdater()
+    lazy var settings = SettingsWindowController(updater: appUpdater)
+    private var launchedAtLogin = false
     var panel: NookPanel!
     var mouseTimer: Timer?
     var monitor: Any?
@@ -616,8 +625,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var dismissedUntilExit = false
     var presenceSubscription: AnyCancellable?
     var presenceGeneration = 0
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        launchedAtLogin = event?.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem) != nil
+            || event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+    }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        installApplicationMenu()
+        model.showSettings = { [weak self] in self?.showSettings() }
+        model.checkForUpdates = { [weak self] in self?.checkForUpdates() }
+        appUpdater.showSettings = { [weak self] in self?.showSettings() }
+        appUpdater.start()
         panel = NookPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
@@ -671,7 +690,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .keyDown]) { [weak self] event in
             guard let self, self.model.acceptsInteraction else { return event }
             if self.model.outputPickerPresented { return event }
-            if event.type == .keyDown && event.keyCode == 53 { self.collapse(); return nil }
+            if event.type == .keyDown && event.keyCode == 53 && event.window === self.panel { self.collapse(); return nil }
             if event.type == .scrollWheel && event.window === self.panel && !self.model.scrubbing { self.scroll(event); return nil }
             return event
         }
@@ -685,8 +704,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard self.interactionRect.contains(point) else { return }
             self.expand()
         }
-        screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in self?.placeWindow() }
+        screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.placeWindow() }
+        }
         // The media stream stays connected while the window is absent.
+        if !launchedAtLogin && !CommandLine.arguments.contains("--background") {
+            DispatchQueue.main.async { [weak self] in self?.showSettings() }
+        }
+    }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showSettings()
+        return false
+    }
+    @objc func showSettings() { collapse(); settings.show() }
+    @objc func checkForUpdates() { showSettings(); appUpdater.checkForUpdates() }
+
+    private func installApplicationMenu() {
+        let menu = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu(title: "notchplayer")
+        for (title, action, key) in [("设置…", #selector(showSettings), ","),
+                                      ("检查更新…", #selector(checkForUpdates), "")] {
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+            item.target = self
+            appMenu.addItem(item)
+        }
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "隐藏 notchplayer", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "退出 notchplayer", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        menu.addItem(appItem)
+        let windowItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "窗口")
+        windowMenu.addItem(withTitle: "最小化", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        windowMenu.addItem(withTitle: "关闭窗口", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowItem.submenu = windowMenu
+        menu.addItem(windowItem)
+        NSApp.mainMenu = menu
+        NSApp.windowsMenu = windowMenu
     }
     private func setMusicPresence(_ visible: Bool) {
         presenceGeneration += 1
@@ -712,7 +767,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 } completion: { [weak self] in
                     guard let self, self.presenceGeneration == generation else { return }
                     self.model.acceptsInteraction = true
-                    let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.trackMouse() }
+                    let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
+                        MainActor.assumeIsolated { self?.trackMouse() }
+                    }
                     self.mouseTimer = timer
                     RunLoop.main.add(timer, forMode: .common)
                 }
