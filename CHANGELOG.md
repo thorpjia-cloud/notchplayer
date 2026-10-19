@@ -1,5 +1,15 @@
 # 版本记录
 
+## 0.2.69 — 随菜单栏切换顶部玻璃
+
+- 展开后的顶部支持两种样式：深色菜单栏保留纯黑和短渐变，浅色时移除黑色覆盖，让原生玻璃及现有烟灰、专辑染色连续覆盖顶部。下方透明度、布局、收起高度与波形保持不变。
+- 自动模式结合系统菜单栏外观与本地壁纸顶部亮度，避免浅色壁纸搭配白色菜单栏图标时误用黑色。缩略图后台计算并缓存，启动、桌面切换和展开时按需更新；动态壁纸使用系统预览图，不采集屏幕或逐帧分析。
+- 设置新增“菜单栏样式”，可选择跟随菜单栏、黑色渐变或统一玻璃，重启后保留选择。
+
+验证：双架构编译、应用签名、更新列表签名和 DMG 校验通过；壁纸顶部取样、明暗分类、缓冲阈值及缺失文件检查通过。已查看连续玻璃与设置界面，实测手动选项在重启后保留，运行中的自动模式在当前浅色壁纸下选择连续玻璃。
+
+实现依据：[Apple NSWorkspace 壁纸接口](https://developer.apple.com/documentation/appkit/nsworkspace/desktopimageurl(for:))、[AppKit effectiveAppearance](https://developer.apple.com/documentation/appkit/nsappearancecustomization/effectiveappearance)。
+
 ## 0.2.68 — 设置内控制开机自启动
 
 - 设置窗口增加“开机自启动”勾选框，通过 Apple `SMAppService.mainApp` 注册或取消当前应用的登录项，不保存另一套独立的开关状态。

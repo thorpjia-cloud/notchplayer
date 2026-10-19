@@ -11,6 +11,7 @@ final class NookModel: ObservableObject {
     }
     var expansionChanged: (() -> Void)?
     @Published var nativeGlassIsActive = false
+    @Published var usesBlackHeader = true
     @Published var pinned = false
     @Published var hovering = false
     @Published var scrubbing = false
@@ -131,6 +132,7 @@ private func glassReveal(_ progress: CGFloat, from start: CGFloat, to end: CGFlo
 
 struct SiriGlassSurface: View, Animatable {
     var nativeGlassIsActive: Bool
+    var usesBlackHeader: Bool
     var topHeight: CGFloat
     var progress: CGFloat
     var artworkTint: Color
@@ -171,7 +173,7 @@ struct SiriGlassSurface: View, Animatable {
                 }
             }
             .clipShape(NotchOutline())
-            .opacity(reveal)
+            .opacity(usesBlackHeader ? reveal : 0)
             NotchOutline(compactTension: compactTension)
                 .fill(Color(red: 0.025, green: 0.027, blue: 0.03))
                 .opacity(1 - reveal)
@@ -184,7 +186,11 @@ struct SiriGlassSurface: View, Animatable {
         // Separate neutral absorption from the cover hue so the color reads as part of the glass.
         GeometryReader { geometry in
             VStack(spacing: 0) {
-                Color.clear.frame(height: min(topHeight, geometry.size.height))
+                // Extend the first wash color upward without moving the established lower gradient.
+                Color.black.opacity(0.38)
+                    .overlay(artworkTint.opacity(0.02))
+                    .opacity(usesBlackHeader ? 0 : 1)
+                    .frame(height: min(topHeight, geometry.size.height))
                 LinearGradient(stops: [
                     .init(color: artworkTint.opacity(0.02), location: 0),
                     .init(color: artworkTint.opacity(0.045), location: 0.25),
@@ -273,6 +279,7 @@ struct GlassReflectionStroke: View {
 struct NotchMorph: AnimatableModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var nativeGlassIsActive: Bool
+    var usesBlackHeader: Bool
     var artworkTint: Color
     var progress: CGFloat
     var presence: CGFloat
@@ -299,17 +306,17 @@ struct NotchMorph: AnimatableModifier {
                    height: size.height + dragY * 0.12, alignment: .top)
             .clipShape(NotchOutline(compactTension: tension))
             .background {
-                SiriGlassSurface(nativeGlassIsActive: nativeGlassIsActive, topHeight: topHeight,
+                SiriGlassSurface(nativeGlassIsActive: nativeGlassIsActive, usesBlackHeader: usesBlackHeader, topHeight: topHeight,
                                  progress: progress, artworkTint: artworkTint, compactTension: tension)
             }
             .background { GlassLiftShadow(progress: progress) }
-            .overlay { GlassReflectionStroke(topHeight: topHeight, progress: progress) }
+            .overlay { GlassReflectionStroke(topHeight: usesBlackHeader ? topHeight : 0, progress: progress) }
             .overlay {
-                // Keep the menu-bar region opaque without tinting the native lens below it.
+                // Only dark menu bars need an opaque cap; the native lens remains continuous underneath.
                 Color.black.frame(height: topHeight)
                     .frame(maxHeight: .infinity, alignment: .top)
                     .clipShape(NotchOutline())
-                    .opacity(glassReveal(progress, from: 0, to: 1))
+                    .opacity(usesBlackHeader ? glassReveal(progress, from: 0, to: 1) : 0)
                     .allowsHitTesting(false).accessibilityHidden(true)
             }
             .opacity(glassReveal(presence, from: 0, to: 0.28))
@@ -344,7 +351,7 @@ struct MusicView: View {
                     controls.transition(.opacity.combined(with: .offset(y: -8)))
                 }
             }
-            .modifier(NotchMorph(nativeGlassIsActive: model.nativeGlassIsActive, artworkTint: glassTint,
+            .modifier(NotchMorph(nativeGlassIsActive: model.nativeGlassIsActive, usesBlackHeader: model.usesBlackHeader, artworkTint: glassTint,
                                  progress: model.expanded ? 1 : 0,
                                  presence: model.musicVisible ? 1 : 0,
                                  notchWidth: model.hardwareNotchWidth,
@@ -611,7 +618,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let model = NookModel()
     let media = MediaService()
     let appUpdater = AppUpdater()
-    lazy var settings = SettingsWindowController(updater: appUpdater)
+    let menuBarAppearance = MenuBarAppearance()
+    lazy var settings = SettingsWindowController(updater: appUpdater, menuBarAppearance: menuBarAppearance)
+    private var appearanceSubscription: AnyCancellable?
     private var launchedAtLogin = false
     var panel: NookPanel!
     var mouseTimer: Timer?
@@ -632,6 +641,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        menuBarAppearance.start()
+        model.usesBlackHeader = menuBarAppearance.usesBlackHeader
+        appearanceSubscription = menuBarAppearance.$usesBlackHeader.removeDuplicates().sink { [weak self] black in
+            withAnimation(.easeInOut(duration: 0.25)) { self?.model.usesBlackHeader = black }
+        }
         installApplicationMenu()
         model.showSettings = { [weak self] in self?.showSettings() }
         model.checkForUpdates = { [weak self] in self?.checkForUpdates() }
@@ -666,6 +680,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self.panel.invalidateShadow()
             self.focusRelease?.cancel()
             if self.model.expanded {
+                self.menuBarAppearance.refresh()
                 self.panel.acceptsKeyboardFocus = true
                 self.panel.makeKey()
                 self.model.nativeGlassIsActive = self.panel.isKeyWindow
@@ -705,7 +720,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self.expand()
         }
         screenObserver = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.placeWindow() }
+            MainActor.assumeIsolated { self?.placeWindow(); self?.menuBarAppearance.refresh() }
         }
         // The media stream stays connected while the window is absent.
         if !launchedAtLogin && !CommandLine.arguments.contains("--background") {
@@ -872,6 +887,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func reconnect() { media.reconnect() }
     @objc func quit() { NSApp.terminate(nil) }
     func applicationWillTerminate(_ notification: Notification) {
+        appearanceSubscription?.cancel()
+        menuBarAppearance.stop()
         presenceSubscription?.cancel()
         media.stop(); mouseTimer?.invalidate(); focusRelease?.cancel()
         if let monitor { NSEvent.removeMonitor(monitor) }

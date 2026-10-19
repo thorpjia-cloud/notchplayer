@@ -6,21 +6,26 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     let updater: AppUpdater
     private let loginItem = LoginItemSettings()
+    private let menuBarAppearance: MenuBarAppearance
 
-    init(updater: AppUpdater) { self.updater = updater }
+    init(updater: AppUpdater, menuBarAppearance: MenuBarAppearance) {
+        self.updater = updater
+        self.menuBarAppearance = menuBarAppearance
+    }
 
     func show() {
         if window == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 520),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 640),
                                   styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
             window.title = "notchplayer 设置"
             window.isReleasedWhenClosed = false
             window.delegate = self
-            window.contentView = NSHostingView(rootView: SettingsView(updater: updater, loginItem: loginItem))
+            window.contentView = NSHostingView(rootView: SettingsView(updater: updater, loginItem: loginItem, menuBarAppearance: menuBarAppearance))
             window.center()
             self.window = window
         }
         loginItem.refresh()
+        menuBarAppearance.refresh()
         // A temporary Dock presence makes the settings window easy to find without changing background playback.
         NSApp.setActivationPolicy(.regular)
         window?.makeKeyAndOrderFront(nil)
@@ -37,6 +42,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 private struct SettingsView: View {
     @ObservedObject var updater: AppUpdater
     @ObservedObject var loginItem: LoginItemSettings
+    @ObservedObject var menuBarAppearance: MenuBarAppearance
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -62,6 +68,18 @@ private struct SettingsView: View {
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
             } label: {
                 Label("启动", systemImage: "power").font(.headline)
+            }
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("菜单栏样式", selection: Binding(get: { menuBarAppearance.style }, set: menuBarAppearance.setStyle)) {
+                        ForEach(MenuBarStyle.allCases) { style in Text(style.title).tag(style) }
+                    }
+                    Text(menuBarAppearance.detail)
+                        .font(.callout).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            } label: {
+                Label("外观", systemImage: "circle.lefthalf.filled").font(.headline)
             }
             GroupBox {
                 VStack(alignment: .leading, spacing: 15) {
@@ -105,10 +123,11 @@ private struct SettingsView: View {
         }
         .padding(26)
         .frame(width: 520, alignment: .topLeading)
-        .frame(minHeight: 520)
+        .frame(minHeight: 640)
         .background(Color(nsColor: .windowBackgroundColor))
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             loginItem.refresh()
+            menuBarAppearance.refresh()
         }
     }
 }
