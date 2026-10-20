@@ -19,7 +19,7 @@ final class NookModel: ObservableObject {
     weak var outputPickerButton: NSButton?
     @Published var dragX: CGFloat = 0
     @Published var dragY: CGFloat = 0
-    @Published var closedWidth: CGFloat = 280
+    @Published var closedWidth: CGFloat = CompactNotchLayout.width(notchWidth: 164)
     @Published var topHeight: CGFloat = 32
     var requestClose: (() -> Void)?
     var showSettings: (() -> Void)?
@@ -84,28 +84,6 @@ final class NookModel: ObservableObject {
         if presented { closeWork?.cancel() } else { scheduleClose() }
     }
 }
-struct NotchOutline: Shape {
-    var drawsTopEdge = true
-    var compactTension: CGFloat = 0
-    func path(in rect: CGRect) -> Path {
-        let w = rect.width, h = rect.height
-        let shoulder: CGFloat = 16 - 4 * compactTension
-        let bottom = min(46, h * 0.55) + min(3, h * 0.08) * compactTension
-        var p = Path()
-        p.move(to: CGPoint(x: w, y: 0))
-        p.addCurve(to: CGPoint(x: w - shoulder, y: shoulder), control1: CGPoint(x: w - shoulder, y: 0), control2: CGPoint(x: w - shoulder, y: 6))
-        p.addLine(to: CGPoint(x: w - shoulder, y: h - bottom))
-        p.addQuadCurve(to: CGPoint(x: w - shoulder - bottom, y: h), control: CGPoint(x: w - shoulder, y: h))
-        p.addLine(to: CGPoint(x: shoulder + bottom, y: h))
-        p.addQuadCurve(to: CGPoint(x: shoulder, y: h - bottom), control: CGPoint(x: shoulder, y: h))
-        p.addLine(to: CGPoint(x: shoulder, y: shoulder))
-        p.addCurve(to: .zero, control1: CGPoint(x: shoulder, y: 6), control2: CGPoint(x: shoulder, y: 0))
-        if drawsTopEdge { p.closeSubpath() }
-        return p
-    }
-}
-
-
 struct StableBackdrop: NSViewRepresentable {
     var expanded: Bool
     func makeNSView(context: Context) -> NSVisualEffectView {
@@ -136,7 +114,7 @@ struct SiriGlassSurface: View, Animatable {
     var topHeight: CGFloat
     var progress: CGFloat
     var artworkTint: Color
-    var compactTension: CGFloat = 0
+    var outline: NotchOutline
     var animatableData: CGFloat {
         get { progress }
         set { progress = newValue }
@@ -147,13 +125,13 @@ struct SiriGlassSurface: View, Animatable {
             if #available(macOS 26.0, *) {
                 // Full native optics need the active window path; masking them suppresses the actual lensing.
                 Color.clear
-                    .glassEffect(.clear.interactive(false), in: NotchOutline())
+                    .glassEffect(.clear.interactive(false), in: outline)
                     .glassEffectTransition(.identity)
                     .opacity(nativeGlassIsActive ? reveal : 0)
                     .environment(\.appearsActive, true)
                     .materialActiveAppearance(.active)
             } else {
-                StableBackdrop(expanded: true).clipShape(NotchOutline()).opacity(reveal)
+                StableBackdrop(expanded: true).clipShape(outline).opacity(reveal)
             }
             artworkWash
             // GeometryReader prevents the transition layer's fixed height from enlarging the collapsed background.
@@ -172,9 +150,9 @@ struct SiriGlassSurface: View, Animatable {
                     Spacer(minLength: 0)
                 }
             }
-            .clipShape(NotchOutline())
+            .clipShape(outline)
             .opacity(usesBlackHeader ? reveal : 0)
-            NotchOutline(compactTension: compactTension)
+            outline
                 .fill(Color(red: 0.025, green: 0.027, blue: 0.03))
                 .opacity(1 - reveal)
         }
@@ -211,18 +189,19 @@ struct SiriGlassSurface: View, Animatable {
             }
         }
         .animation(.easeInOut(duration: 0.35), value: artworkTint)
-        .clipShape(NotchOutline())
+        .clipShape(outline)
         .opacity(reveal)
     }
 }
 
 private struct GlassExteriorMask: Shape {
     var margin: CGFloat
+    var outline: NotchOutline
     func path(in rect: CGRect) -> Path {
         var path = Path(rect)
         let innerSize = CGSize(width: max(0, rect.width - margin * 2),
                                height: max(0, rect.height - margin * 2))
-        path.addPath(NotchOutline().path(in: CGRect(origin: .zero, size: innerSize))
+        path.addPath(outline.path(in: CGRect(origin: .zero, size: innerSize))
             .offsetBy(dx: margin, dy: margin))
         return path
     }
@@ -230,16 +209,17 @@ private struct GlassExteriorMask: Shape {
 
 struct GlassLiftShadow: View {
     var progress: CGFloat
+    var outline: NotchOutline
     var body: some View {
         GeometryReader { geometry in
             let margin: CGFloat = 36
             // Cut out the lens interior so lift and contact shadows cannot tint the clear center.
-            NotchOutline().fill(.black)
+            outline.fill(.black)
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .shadow(color: .black.opacity(0.18), radius: 12, y: 7)
                 .shadow(color: .black.opacity(0.16), radius: 2.5, y: 1.5)
                 .padding(margin)
-                .mask { GlassExteriorMask(margin: margin).fill(.white, style: FillStyle(eoFill: true)) }
+                .mask { GlassExteriorMask(margin: margin, outline: outline).fill(.white, style: FillStyle(eoFill: true)) }
                 .offset(x: -margin, y: -margin)
         }
         .opacity(glassReveal(progress, from: 0.22, to: 0.92))
@@ -250,9 +230,15 @@ struct GlassLiftShadow: View {
 struct GlassReflectionStroke: View {
     var topHeight: CGFloat
     var progress: CGFloat
+    var outline: NotchOutline
+    private var rim: NotchOutline {
+        var shape = outline
+        shape.drawsTopEdge = false
+        return shape
+    }
     var body: some View {
         // A directional hairline stays legible between the sparse native specular peaks.
-        NotchOutline(drawsTopEdge: false)
+        rim
             .stroke(LinearGradient(stops: [
                 .init(color: .white.opacity(0.08), location: 0),
                 .init(color: .white.opacity(0.55), location: 0.24),
@@ -301,21 +287,22 @@ struct NotchMorph: AnimatableModifier {
                                     closed: CGSize(width: closedWidth, height: closedHeight),
                                     open: CGSize(width: 360, height: topHeight + 100))
         let tension = reduceMotion ? 0 : GlassMotion.presenceTension(progress: presence) * (1 - min(1, max(0, progress)))
+        let outline = NotchOutline(compactHeight: topHeight, compactTension: tension)
         content
             .frame(width: (reduceMotion ? size.width : GlassMotion.presenceWidth(progress: presence, notchWidth: notchWidth, visibleWidth: size.width)) + abs(dragX) * 0.1,
                    height: size.height + dragY * 0.12, alignment: .top)
-            .clipShape(NotchOutline(compactTension: tension))
+            .clipShape(outline)
             .background {
                 SiriGlassSurface(nativeGlassIsActive: nativeGlassIsActive, usesBlackHeader: usesBlackHeader, topHeight: topHeight,
-                                 progress: progress, artworkTint: artworkTint, compactTension: tension)
+                                 progress: progress, artworkTint: artworkTint, outline: outline)
             }
-            .background { GlassLiftShadow(progress: progress) }
-            .overlay { GlassReflectionStroke(topHeight: usesBlackHeader ? topHeight : 0, progress: progress) }
+            .background { GlassLiftShadow(progress: progress, outline: outline) }
+            .overlay { GlassReflectionStroke(topHeight: usesBlackHeader ? topHeight : 0, progress: progress, outline: outline) }
             .overlay {
                 // Only dark menu bars need an opaque cap; the native lens remains continuous underneath.
                 Color.black.frame(height: topHeight)
                     .frame(maxHeight: .infinity, alignment: .top)
-                    .clipShape(NotchOutline())
+                    .clipShape(outline)
                     .opacity(usesBlackHeader ? glassReveal(progress, from: 0, to: 1) : 0)
                     .allowsHitTesting(false).accessibilityHidden(true)
             }
@@ -369,7 +356,7 @@ struct MusicView: View {
                 }
             }
             .offset(x: model.dragX * 0.12)
-            .contentShape(NotchOutline())
+            .contentShape(NotchOutline(compactHeight: model.topHeight))
             .contextMenu {
                 Button("设置…") { model.showSettings?() }
                 Button("检查更新…") { model.checkForUpdates?() }
@@ -384,7 +371,7 @@ struct MusicView: View {
             .overlay {
                 if !model.expanded {
                     Button { model.open() } label: {
-                        Color.clear.contentShape(NotchOutline())
+                        Color.clear.contentShape(NotchOutline(compactHeight: model.topHeight))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("展开音乐播放器")
@@ -402,7 +389,7 @@ struct MusicView: View {
     private var header: some View {
         HStack {
             if !model.expanded {
-                cover(size: min(22, model.topHeight - 8)).accessibilityLabel("展开音乐播放器")
+                cover(size: min(CompactNotchLayout.artworkSize, model.topHeight - 8)).accessibilityLabel("展开音乐播放器")
                     .modifier(CompactWingReveal(progress: model.musicVisible ? 1 : 0, inwardOffset: 12))
                 Spacer(minLength: 0)
                 bars.frame(width: 20, height: 16).accessibilityLabel(media.playing ? "正在播放" : "播放已暂停")
@@ -410,7 +397,7 @@ struct MusicView: View {
             }
         }
         // Keep the hardware notch area clear while the music controls sit below it.
-        .padding(.horizontal, 28).frame(height: model.topHeight)
+        .padding(.horizontal, CompactNotchLayout.outerInset).frame(height: model.topHeight)
     }
     private var controls: some View {
         VStack(spacing: 8) {
@@ -825,17 +812,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         var notchWidth: CGFloat = 164
         if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea { notchWidth = max(130, right.minX - left.maxX) }
         model.hardwareNotchWidth = notchWidth
-        // Each wing needs 28 pt outer inset, a 22 pt cover, and 10 pt clearance from hardware.
-        model.closedWidth = notchWidth + 2 * (28 + 22 + 10)
+        model.closedWidth = CompactNotchLayout.width(notchWidth: notchWidth)
         panel.setFrame(NSRect(x: screen.frame.midX - 330, y: screen.frame.maxY - 320, width: 660, height: 320), display: true)
         // Record geometry only so the physical top-edge invariant can be checked.
         let line = "screen=\(screen.frame) visible=\(screen.visibleFrame) panel=\(panel.frame) safeTop=\(screen.safeAreaInsets.top) menuBarInset=\(menuBarInset) compactHeight=\(model.topHeight)\n"
         try? line.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("nooklab-geometry.txt"), atomically: true, encoding: .utf8)
     }
     var interactionRect: NSRect {
-        NSRect(x: panel.frame.midX - model.width / 2 + 14,
+        let inset: CGFloat = model.expanded ? 14 : 6 * model.topHeight / 32
+        return NSRect(x: panel.frame.midX - model.width / 2 + inset,
                y: panel.frame.maxY - model.height,
-               width: model.width - 28, height: model.height)
+               width: model.width - 2 * inset, height: model.height)
     }
     private func openOutputPicker(at screenPoint: NSPoint) -> Bool {
         guard model.acceptsInteraction, model.expanded, !model.outputPickerPresented,
