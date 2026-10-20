@@ -6,6 +6,7 @@ final class NookModel: ObservableObject {
     @Published var musicVisible = false
     @Published var acceptsInteraction = false
     @Published var hardwareNotchWidth: CGFloat = 164
+    @Published var hardwareNotchLeadingOffset: CGFloat = -82
     @Published var expanded = false {
         didSet { if oldValue != expanded { expansionChanged?() } }
     }
@@ -345,16 +346,6 @@ struct MusicView: View {
                                  closedWidth: model.closedWidth + (model.hovering ? 12 : 0),
                                  closedHeight: model.topHeight,
                                  topHeight: model.topHeight, dragX: model.dragX, dragY: model.dragY))
-            .overlay(alignment: .topLeading) {
-                if model.expanded {
-                    AudioOutputPicker(volume: media.volume, presentationChanged: model.setOutputPickerPresented,
-                                      buttonReady: { model.outputPickerButton = $0 })
-                        .frame(width: 24, height: 24)
-                        .padding(.leading, 28)
-                        .padding(.top, max(0, (model.topHeight - 24) / 2))
-                        .transition(.opacity)
-                }
-            }
             .offset(x: model.dragX * 0.12)
             .contentShape(NotchOutline(compactHeight: model.topHeight))
             .contextMenu {
@@ -382,6 +373,19 @@ struct MusicView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .overlay(alignment: .top) {
+            if model.expanded {
+                // Anchor to hardware in the fixed host, outside the panel's resize and drag transforms.
+                AudioOutputPicker(volume: media.volume, presentationChanged: model.setOutputPickerPresented,
+                                  buttonReady: { model.outputPickerButton = $0 })
+                    .frame(width: 24, height: 24)
+                    .offset(x: model.hardwareNotchLeadingOffset - 12 - 4,
+                            y: max(0, (model.topHeight - 24) / 2))
+                    .transition(.opacity)
+                    .allowsHitTesting(model.acceptsInteraction)
+                    .accessibilityHidden(!model.acceptsInteraction)
+            }
+        }
         .ignoresSafeArea(.all)
         .preferredColorScheme(.dark)
         .environment(\.appearsActive, true)
@@ -416,7 +420,7 @@ struct MusicView: View {
                         Image(systemName: "forward.fill").font(.system(size: 13, weight: .regular)).frame(width: 28, height: 36)
                     }.accessibilityLabel("下一首").help("下一首")
                 }
-                .buttonStyle(TransportButtonStyle())
+                .buttonStyle(TransportButtonStyle(cornerRadius: NotchCorners.radius * model.topHeight / 32))
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(.white.opacity(0.94))
                 .shadow(color: .black.opacity(0.55), radius: 0.8, y: 0.5)
@@ -463,7 +467,10 @@ struct MusicView: View {
                     Image(systemName: "music.note").font(.system(size: size * 0.32)).foregroundStyle(.white.opacity(0.55))
                 }
             }
-        }.frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: size > 30 ? min(15, size * 0.22) : 5))
+        }.frame(width: size, height: size)
+            // Preserve the large cover's proportions instead of turning the 22 pt thumbnail into a pill.
+            .clipShape(RoundedRectangle(cornerRadius: NotchCorners.radius * min(1, size / 48) * model.topHeight / 32,
+                                        style: .circular))
     }
     private var bars: some View {
         SpectrumBars(spectrum: media.spectrum, accent: accent)
@@ -810,8 +817,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Hover may widen the notch, but its resting and hovered heights must fit the menu bar.
         model.topHeight = menuBarInset > 0 ? min(reservedTop, menuBarInset) : reservedTop
         var notchWidth: CGFloat = 164
-        if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea { notchWidth = max(130, right.minX - left.maxX) }
+        var notchLeadingOffset: CGFloat = -notchWidth / 2
+        if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
+            notchWidth = max(130, right.minX - left.maxX)
+            notchLeadingOffset = left.maxX - screen.frame.midX
+        }
         model.hardwareNotchWidth = notchWidth
+        model.hardwareNotchLeadingOffset = notchLeadingOffset
         model.closedWidth = CompactNotchLayout.width(notchWidth: notchWidth)
         panel.setFrame(NSRect(x: screen.frame.midX - 330, y: screen.frame.maxY - 320, width: 660, height: 320), display: true)
         // Record geometry only so the physical top-edge invariant can be checked.

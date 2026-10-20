@@ -1,5 +1,13 @@
 import SwiftUI
 
+enum NotchCorners {
+    // A developer-reported approximation, not an Apple hardware specification. NSScreen exposes
+    // the cutout bounds, not its curve; scale one profile instead of inventing model overrides.
+    // https://notchbay.com/blog/macbook-notch-size/
+    static let topRadius: CGFloat = 4
+    static let radius: CGFloat = 8
+}
+
 enum CompactNotchLayout {
     static let outerInset: CGFloat = 14
     static let artworkSize: CGFloat = 22
@@ -17,19 +25,18 @@ struct NotchOutline: Shape {
 
     func path(in rect: CGRect) -> Path {
         let w = max(0, rect.width), h = max(0, rect.height)
-        let expansion = min(1, max(0, (h - compactHeight) / 100))
         let scale = max(0, compactHeight) / 32
         let tension = min(1, max(0, compactTension))
         let shoulder = min(h / 3, w / 4,
-                           6 * scale + (16 - 6 * scale) * expansion - 1.5 * scale * tension)
+                           NotchCorners.topRadius * scale - 1.5 * scale * tension)
         // A straight side must remain between the upper and lower curves, even mid-morph.
         let bottom = min(max(0, h - shoulder - 1), max(0, w / 2 - shoulder),
-                         8 * scale + (46 - 8 * scale) * expansion + scale * tension)
+                         NotchCorners.radius * scale + scale * tension)
         let circle: CGFloat = 0.5522847498
-        let topControlX = shoulder * (circle + (1 - circle) * expansion)
-        let topControlY = shoulder * (1 - circle) * (1 - expansion) + 6 * expansion
-        // At full expansion the cubic is exactly the previous quadratic glass corner.
-        let bottomControl = bottom * (circle + (2 / 3 - circle) * expansion)
+        let topControlX = shoulder * circle
+        let topControlY = shoulder * (1 - circle)
+        // Keep the same circular corners as the compact notch while the side walls lengthen.
+        let bottomControl = bottom * circle
         var p = Path()
         p.move(to: CGPoint(x: w, y: 0))
         p.addCurve(to: CGPoint(x: w - shoulder, y: shoulder),

@@ -62,10 +62,14 @@ import SwiftUI
             }
             let expanded = sample(NotchOutline(compactHeight: top)
                 .path(in: CGRect(x: 0, y: 0, width: 360, height: top + 100)))
-            // The previous quadratic's midpoint must survive cubic conversion exactly.
-            let midpoint = CGPoint(x: 360 - 16 - 46 / 4, y: top + 100 - 46 / 4)
-            precondition(expanded.contains { hypot($0.x - midpoint.x, $0.y - midpoint.y) < 0.0001 })
+            let compactPoints = sample(compact)
+            // Expanding may move the corners, but must not change either corner's curvature.
+            for i in 0..<50 {
+                let expected = CGPoint(x: compactPoints[i].x + 360 - width,
+                                       y: compactPoints[i].y + (i >= 25 ? 100 : 0))
+                precondition(hypot(expanded[i].x - expected.x, expanded[i].y - expected.y) < 0.0001)
+            }
         }
-        print("Compact width, hardware clearance, unclipped wings, monotone morph edges, and expanded corner preservation passed")
+        print("Compact width, hardware clearance, unclipped wings, monotone morph edges, and consistent compact/expanded corners passed")
     }
 }

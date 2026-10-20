@@ -1,12 +1,13 @@
 #!/bin/zsh
 set -euo pipefail
 cd "${0:A:h}"
-APP_PATH="$PWD/dist/notchplayer.app"
+DIST_APP_PATH="$PWD/dist/notchplayer.app"
 zsh Tools/prepare-sparkle.sh
-mkdir -p "$APP_PATH/Contents/MacOS"
-# Keep compiler intermediates outside Desktop sync folders; release packages use a clean signing stage.
+# Desktop sync can add Finder metadata between cleanup and signing; sign entirely outside it.
 BUILD_STAGE=$(mktemp -d "${TMPDIR:-/tmp/}notchplayer-build.XXXXXX")
 trap 'rm -rf "$BUILD_STAGE"' EXIT
+APP_PATH="$BUILD_STAGE/notchplayer.app"
+mkdir -p "$APP_PATH/Contents/MacOS"
 ICON_DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}"
 if [[ ! -x "$ICON_DEVELOPER_DIR/usr/bin/actool" && -x /Applications/Xcode.app/Contents/Developer/usr/bin/actool ]]; then
   ICON_DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
@@ -22,7 +23,7 @@ for ARCH in arm64 x86_64; do
 done
 xcrun lipo -create "$BUILD_STAGE/notchplayer-arm64" "$BUILD_STAGE/notchplayer-x86_64" -output "$APP_PATH/Contents/MacOS/notchplayer"
 /usr/libexec/PlistBuddy -c 'Clear dict' "$APP_PATH/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c 'Add :CFBundleExecutable string notchplayer' -c 'Add :CFBundleIdentifier string local.nooklab.prototype' -c 'Add :CFBundleName string notchplayer' -c 'Add :CFBundleDisplayName string notchplayer' -c 'Add :CFBundlePackageType string APPL' -c 'Add :CFBundleShortVersionString string 0.2.70' -c 'Add :CFBundleVersion string 70' -c 'Add :CFBundleIconFile string AppIcon' -c 'Add :NSAudioCaptureUsageDescription string 读取当前音乐播放器的音频以显示实时高低频波形；仅在内存分析，不保存或上传音频。' -c 'Add :LSMinimumSystemVersion string 14.0' -c 'Add :LSUIElement bool true' -c 'Add :NSHighResolutionCapable bool true' "$APP_PATH/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c 'Add :CFBundleExecutable string notchplayer' -c 'Add :CFBundleIdentifier string local.nooklab.prototype' -c 'Add :CFBundleName string notchplayer' -c 'Add :CFBundleDisplayName string notchplayer' -c 'Add :CFBundlePackageType string APPL' -c 'Add :CFBundleShortVersionString string 0.2.71' -c 'Add :CFBundleVersion string 71' -c 'Add :CFBundleIconFile string AppIcon' -c 'Add :NSAudioCaptureUsageDescription string 读取当前音乐播放器的音频以显示实时高低频波形；仅在内存分析，不保存或上传音频。' -c 'Add :LSMinimumSystemVersion string 14.0' -c 'Add :LSUIElement bool true' -c 'Add :NSHighResolutionCapable bool true' "$APP_PATH/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c 'Add :SUFeedURL string https://github.com/thorpjia-cloud/notchplayer/releases/latest/download/appcast.xml' -c "Add :SUPublicEDKey string $(cat Resources/UpdatePublicKey.txt)" -c 'Add :SUEnableAutomaticChecks bool true' -c 'Add :SUAutomaticallyUpdate bool false' -c 'Add :SUScheduledCheckInterval integer 86400' -c 'Add :SUVerifyUpdateBeforeExtraction bool true' -c 'Add :SURequireSignedFeed bool true' "$APP_PATH/Contents/Info.plist"
 mkdir -p "$APP_PATH/Contents/Frameworks"
 ditto --norsrc .build/Sparkle/Sparkle.framework "$APP_PATH/Contents/Frameworks/Sparkle.framework"
@@ -38,4 +39,6 @@ cp Vendor/Sparkle/LICENSE "$APP_PATH/Contents/Resources/Sparkle-LICENSE.txt"
 xattr -dr com.apple.FinderInfo "$APP_PATH" 2>/dev/null || true
 xattr -dr com.apple.ResourceFork "$APP_PATH" 2>/dev/null || true
 codesign --force --deep --sign - "$APP_PATH"
-print "Built: $APP_PATH"
+codesign --verify --deep --strict "$APP_PATH"
+ditto --norsrc "$APP_PATH" "$DIST_APP_PATH"
+print "Built: $DIST_APP_PATH"
