@@ -26,14 +26,19 @@ import AppKit
         return NSImage(cgImage: cg, size: NSSize(width: size, height: size))
     }
     static func main() {
+        precondition(ArtworkPalette.fallback.waveformTop == ArtworkPalette.fallback.secondary)
+        precondition(ArtworkPalette.fallback.waveformBottom == ArtworkPalette.fallback.primary,
+                     "The grayscale startup placeholder must sort safely before any artwork arrives")
         let blue = NSColor(srgbRed: 0.1, green: 0.3, blue: 0.6, alpha: 1)
         let orange = NSColor(srgbRed: 1, green: 0.6, blue: 0.1, alpha: 1)
         let cover = image { x, _ in x < 28 ? blue : (x < 38 ? orange : .white) }
         let colors = ArtworkPalette.colors(from: cover)
         precondition(difference(hsv(colors.primary).h, hsv(blue).h) < 0.04, "Most common color must lead")
         precondition(hsv(colors.primary).v < 0.65, "Keep the actual cover color without artificial brightening")
-        precondition(hsv(colors.secondary).s < 0.02 && hsv(colors.secondary).v > 0.98,
-                     "The brightest color wins even if it only covers a small area")
+        precondition(difference(hsv(colors.secondary).h, hsv(orange).h) < 0.04,
+                     "A substantial contrasting hue must survive white highlights")
+        precondition(colors.waveformTop == colors.primary && colors.waveformBottom == colors.secondary,
+                     "The darker blue must sit above orange without changing the dominant panel tint")
         precondition(ArtworkPalette.colors(from: cover) == colors, "Extraction must be deterministic")
 
         // A broad gradient must win over a smaller flat patch even when its exact RGB values are all different.
@@ -69,12 +74,25 @@ import AppKit
                      "The red focal color must survive a mostly black/gray cover")
         precondition(hsv(red.secondary).s < 0.02 && hsv(red.secondary).v > 0.8,
                      "Gray-white highlights must remain the secondary color")
+        precondition(red.waveformTop == red.primary && red.waveformBottom == red.secondary,
+                     "Red must sit above gray-white")
+        let blueOnWhite = ArtworkPalette.colors(from: image { x, _ in x < 28 ? blue : .white })
+        precondition(difference(hsv(blueOnWhite.primary).h, hsv(blue).h) < 0.04)
+        precondition(hsv(blueOnWhite.waveformBottom).s < 0.02 && hsv(blueOnWhite.waveformBottom).v > 0.98)
+        precondition(blueOnWhite.waveformTop == blueOnWhite.primary,
+                     "A blue cover on white must retain blue across the upper waveform")
+        let speckled = ArtworkPalette.colors(from: image { x, y in
+            if x == 0 && y == 0 { return orange }
+            return x < 28 ? blue : .white
+        })
+        precondition(hsv(speckled.secondary).s < 0.02,
+                     "An isolated contrasting pixel cannot replace a real background color")
         let bordered = ArtworkPalette.colors(from: image { x, y in y < 10 ? .clear : (x < 28 ? blue : orange) })
         precondition(difference(hsv(bordered.primary).h, hsv(blue).h) < 0.04)
         precondition(difference(hsv(bordered.secondary).h, hsv(orange).h) < 0.04)
         let single = ArtworkPalette.colors(from: image { _, _ in blue })
         precondition(single.primary == single.secondary, "A solid cover cannot invent a second color")
         precondition(ArtworkPalette.colors(from: image { _, _ in .clear }) == ArtworkPalette.fallback)
-        print("PASS dominant color, brightest accent, duplicate contrast fallback, original tones, transparency, and deterministic extraction")
+        print("PASS hue-area primary, substantial contrasting secondary, neutral fallback, dark-on-top order, transparency, and deterministic extraction")
     }
 }

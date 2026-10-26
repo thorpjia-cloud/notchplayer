@@ -4,6 +4,10 @@ enum ArtworkPalette {
     struct Colors: Equatable {
         let primary: NSColor
         let secondary: NSColor
+
+        // Dark-to-light ordering is independent of which hue supplies the panel tint.
+        var waveformTop: NSColor { brightness(primary) <= brightness(secondary) ? primary : secondary }
+        var waveformBottom: NSColor { brightness(primary) <= brightness(secondary) ? secondary : primary }
     }
 
     static let fallback = Colors(primary: NSColor(white: 0.72, alpha: 1),
@@ -23,6 +27,8 @@ enum ArtworkPalette {
     }
 
     private static func brightness(_ color: NSColor) -> CGFloat {
+        // App startup uses a grayscale fallback; RGB component access requires conversion first.
+        guard let color = color.usingColorSpace(.sRGB) else { return 0 }
         func linear(_ value: CGFloat) -> CGFloat {
             value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
         }
@@ -38,7 +44,12 @@ enum ArtworkPalette {
         return sqrt((r * r + g * g + blue * blue) / 3)
     }
 
-    private static func dominantHue(in swatches: [Swatch]) -> NSColor? {
+    private static func hueDistance(_ a: NSColor, _ b: NSColor) -> CGFloat {
+        let distance = abs(a.hueComponent - b.hueComponent)
+        return min(distance, 1 - distance)
+    }
+
+    private static func hueFamilies(in swatches: [Swatch]) -> [Swatch] {
         let binCount = 72
         var hues = [Swatch](repeating: Swatch(), count: binCount)
         for swatch in swatches {
@@ -48,15 +59,17 @@ enum ArtworkPalette {
             guard saturation >= 0.25, value >= 0.25 else { continue }
             hues[min(binCount - 1, Int(hue * CGFloat(binCount)))].add(swatch)
         }
-        var dominant = Swatch()
+        var groups: [Swatch] = []
         for center in 0..<binCount {
             var group = Swatch()
             // A circular 45-degree hue neighborhood combines one color's lighting/gradient variations.
             // Area, not any individual RGB shade or saturation, determines the winning color family.
             for offset in -4...4 { group.add(hues[(center + offset + binCount) % binCount]) }
-            if group.count > dominant.count { dominant = group }
+            if group.count > 0 { groups.append(group) }
         }
-        return dominant.count > 0 ? dominant.color : nil
+        return groups.enumerated().sorted {
+            $0.element.count == $1.element.count ? $0.offset < $1.offset : $0.element.count > $1.element.count
+        }.map(\.element)
     }
 
     static func colors(from image: NSImage) -> Colors {
@@ -90,7 +103,19 @@ enum ArtworkPalette {
             $0.element.count == $1.element.count ? $0.offset < $1.offset : $0.element.count > $1.element.count
         }.map(\.element)
         let colors = ranked.map(\.color)
-        guard let primary = dominantHue(in: ranked) ?? colors.first else { return fallback }
+        let families = hueFamilies(in: ranked)
+        guard let primary = families.first?.color ?? colors.first else { return fallback }
+        let area = ranked.reduce(CGFloat.zero) { $0 + $1.count }
+        // A second substantial hue is more representative than a tiny white reflection or lettering.
+        // Area times color separation favors a real contrasting region over isolated colored speckles.
+        let contrastingFamily = families.filter {
+            $0.count >= area * 0.02 && hueDistance(primary, $0.color) >= 1.0 / 6
+        }.max {
+            $0.count * difference(primary, $0.color) < $1.count * difference(primary, $1.color)
+        }
+        if let contrastingFamily {
+            return Colors(primary: primary, secondary: contrastingFamily.color)
+        }
         var lightest = primary
         var contrast = primary
         for color in colors {
