@@ -17,6 +17,9 @@ enum ArtworkPalette {
         var color: NSColor {
             NSColor(srgbRed: red / count, green: green / count, blue: blue / count, alpha: 1)
         }
+        mutating func add(_ other: Swatch) {
+            count += other.count; red += other.red; green += other.green; blue += other.blue
+        }
     }
 
     private static func brightness(_ color: NSColor) -> CGFloat {
@@ -35,11 +38,25 @@ enum ArtworkPalette {
         return sqrt((r * r + g * g + blue * blue) / 3)
     }
 
-    private static func isCoverColor(_ color: NSColor) -> Bool {
-        var hue: CGFloat = 0, saturation: CGFloat = 0, value: CGFloat = 0, alpha: CGFloat = 0
-        color.getHue(&hue, saturation: &saturation, brightness: &value, alpha: &alpha)
-        // Neutral backgrounds and near-black compression noise must not outvote the cover's actual color.
-        return saturation >= 0.25 && value >= 0.25
+    private static func dominantHue(in swatches: [Swatch]) -> NSColor? {
+        let binCount = 72
+        var hues = [Swatch](repeating: Swatch(), count: binCount)
+        for swatch in swatches {
+            var hue: CGFloat = 0, saturation: CGFloat = 0, value: CGFloat = 0, alpha: CGFloat = 0
+            swatch.color.getHue(&hue, saturation: &saturation, brightness: &value, alpha: &alpha)
+            // Background neutrals and near-black compression noise do not vote for the dominant hue.
+            guard saturation >= 0.25, value >= 0.25 else { continue }
+            hues[min(binCount - 1, Int(hue * CGFloat(binCount)))].add(swatch)
+        }
+        var dominant = Swatch()
+        for center in 0..<binCount {
+            var group = Swatch()
+            // A circular 45-degree hue neighborhood combines one color's lighting/gradient variations.
+            // Area, not any individual RGB shade or saturation, determines the winning color family.
+            for offset in -4...4 { group.add(hues[(center + offset + binCount) % binCount]) }
+            if group.count > dominant.count { dominant = group }
+        }
+        return dominant.count > 0 ? dominant.color : nil
     }
 
     static func colors(from image: NSImage) -> Colors {
@@ -69,10 +86,11 @@ enum ArtworkPalette {
             bins[key].count += alpha
             bins[key].red += r * alpha; bins[key].green += g * alpha; bins[key].blue += b * alpha
         }
-        let colors = bins.enumerated().filter { $0.element.count > 0 }.sorted {
+        let ranked = bins.enumerated().filter { $0.element.count > 0 }.sorted {
             $0.element.count == $1.element.count ? $0.offset < $1.offset : $0.element.count > $1.element.count
-        }.map { $0.element.color }
-        guard let primary = colors.first(where: isCoverColor) ?? colors.first else { return fallback }
+        }.map(\.element)
+        let colors = ranked.map(\.color)
+        guard let primary = dominantHue(in: ranked) ?? colors.first else { return fallback }
         var lightest = primary
         var contrast = primary
         for color in colors {

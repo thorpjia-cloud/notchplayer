@@ -36,6 +36,23 @@ import AppKit
                      "The brightest color wins even if it only covers a small area")
         precondition(ArtworkPalette.colors(from: cover) == colors, "Extraction must be deterministic")
 
+        // A broad gradient must win over a smaller flat patch even when its exact RGB values are all different.
+        for dominantHue: CGFloat in [0.08, 0.32, 0.62, 0.83] {
+            let gradient = ArtworkPalette.colors(from: image { x, y in
+                if x >= 26 { return NSColor(calibratedHue: (dominantHue + 0.4).truncatingRemainder(dividingBy: 1),
+                                            saturation: 0.6, brightness: 0.85, alpha: 1) }
+                return NSColor(calibratedHue: dominantHue + CGFloat(x - 13) * 0.0015,
+                               saturation: 0.35 + CGFloat(y) * 0.014,
+                               brightness: 0.45 + CGFloat(x) * 0.018, alpha: 1)
+            })
+            precondition(difference(hsv(gradient.primary).h, dominantHue) < 0.07,
+                         "All shades of the largest hue family must vote together")
+        }
+        let hueSeam = ArtworkPalette.colors(from: image { x, _ in
+            NSColor(calibratedHue: x < 14 ? 0.99 : (x < 28 ? 0.01 : 0.6), saturation: 0.8, brightness: 0.8, alpha: 1)
+        })
+        precondition(difference(hsv(hueSeam.primary).h, 0) < 0.04, "Red must merge across the hue circle seam")
+
         let repeated = ArtworkPalette.colors(from: image { x, _ in x < 28 ? .white : (x < 38 ? .gray : .black) })
         precondition(hsv(repeated.primary).v > 0.98)
         precondition(hsv(repeated.secondary).v < 0.02, "Repeated dominant/brightest colors must use the strongest contrasting cover color")

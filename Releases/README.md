@@ -1,12 +1,12 @@
 # notchplayer 安装包与回退
 
-## 当前版本：0.2.72
+## 当前版本：0.2.73
 
-推荐下载 [GitHub Releases 最新版](https://github.com/thorpjia-cloud/notchplayer/releases/latest) 中的 **notchplayer-0.2.72-macOS-universal.dmg**，打开后把应用拖入 Applications。
+推荐下载 [GitHub Releases 最新版](https://github.com/thorpjia-cloud/notchplayer/releases/latest) 中的 **notchplayer-0.2.73-macOS-universal.dmg**，打开后把应用拖入 Applications。
 
-也提供 `notchplayer-0.2.72-macOS-universal.zip`，解压后手动放入“应用程序”。两种安装包使用同一份本地签名应用，支持 arm64/x86_64；实机验证使用 Apple Silicon。免费包未经过苹果公证，首次可能需要按 [Apple 官方步骤](https://support.apple.com/102445) 点击“仍要打开”，并允许系统音频录制。
+也提供 `notchplayer-0.2.73-macOS-universal.zip`，解压后手动放入“应用程序”。两种安装包使用同一份本地签名应用，支持 arm64/x86_64；实机验证使用 Apple Silicon。免费包未经过苹果公证，首次可能需要按 [Apple 官方步骤](https://support.apple.com/102445) 点击“仍要打开”，并允许系统音频录制。
 
-历史 0.2.61—0.2.71 安装包、校验值与版本标签保留不变。
+历史 0.2.61—0.2.72 安装包、校验值与版本标签保留不变。
 
 ## 校验与恢复
 

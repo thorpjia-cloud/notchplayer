@@ -6,16 +6,16 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>notchplayer</title>
         <item>
-            <title>0.2.72</title>
-            <pubDate>Mon, 26 Oct 2026 17:06:32 +0800</pubDate>
-            <sparkle:version>72</sparkle:version>
-            <sparkle:shortVersionString>0.2.72</sparkle:shortVersionString>
+            <title>0.2.73</title>
+            <pubDate>Mon, 26 Oct 2026 17:58:14 +0800</pubDate>
+            <sparkle:version>73</sparkle:version>
+            <sparkle:shortVersionString>0.2.73</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <description sparkle:format="markdown"><![CDATA[把音乐放在 Mac 顶部：专辑封面、播放控制、实时波形与原生液态玻璃。
 
 ## 下载
 
-**[下载 macOS 安装包（DMG）](https://github.com/thorpjia-cloud/notchplayer/releases/download/v0.2.72/notchplayer-0.2.72-macOS-universal.dmg)** · [ZIP 备用下载](https://github.com/thorpjia-cloud/notchplayer/releases/download/v0.2.72/notchplayer-0.2.72-macOS-universal.zip)
+**[下载 macOS 安装包（DMG）](https://github.com/thorpjia-cloud/notchplayer/releases/download/v0.2.73/notchplayer-0.2.73-macOS-universal.dmg)** · [ZIP 备用下载](https://github.com/thorpjia-cloud/notchplayer/releases/download/v0.2.73/notchplayer-0.2.73-macOS-universal.zip)
 
 Apple Silicon / Intel 通用包，macOS 14+。实时波形需要 macOS 14.2+，原生 Liquid Glass 需要 macOS 26+。
 
@@ -38,10 +38,10 @@ Apple Silicon / Intel 通用包，macOS 14+。实时波形需要 macOS 14.2+，�
 
 ## 本次更新
 
-- 波形从专辑封面提取两种颜色：排除黑白底色后占比最多的主色在上，明度最高的辅色在下，中间自然渐变。
-- 两种颜色重复或非常接近时，辅色改用封面中与主色反差最大的颜色；保留封面原色；纯黑白封面使用中性色。
-- 展开面板染色和进度条使用主色，保持现有透明度、圆角、布局与菜单栏深浅适配。
-- 保留波形的原生液态玻璃和细边高光；仅在封面变化时取色，音频分析与波形刷新逻辑不变。
+- 重写封面取色：先按相近色调合并明暗和渐变，再按整片颜色的面积选主色，避免蓝色渐变被拆散后输给小块粉色。
+- 黑白灰背景不参与彩色主色竞争；辅色取封面中最亮的颜色，重复时取与主色反差最大的颜色。纯黑白封面仍使用中性色。
+- 波形上方主色、下方辅色自然过渡；展开面板染色和进度条使用主色。
+- 保留原生玻璃、波形高光、透明度、布局及菜单栏样式。仅在封面变化时取色，音频分析与波形刷新逻辑不变。
 
 0.2.67 及更新版本可在应用内点击“检查更新”，下载完成后选择“重启并更新”。0.2.66 及更早版本需要手动安装一次新版。
 
@@ -51,7 +51,7 @@ Apple Silicon / Intel 通用包，macOS 14+。实时波形需要 macOS 14.2+，�
 
 感谢 [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) 作者 Jonas van den Berg。更多说明见 [致谢与许可证](https://github.com/thorpjia-cloud/notchplayer/blob/main/NOTICE.md)。
 ]]></description>
-            <enclosure url="https://github.com/thorpjia-cloud/notchplayer/releases/download/v0.2.72/notchplayer-0.2.72-macOS-universal.zip" length="7243581" type="application/octet-stream" sparkle:edSignature="+d/fQvC40qYV13JPKlalbMlaLEUuCPJ/fPb7W6tmqy9MDDOee7m2CUIRfrLNfNes0EGSKdhUNk7vzdIO+5g1Bw=="/>
+            <enclosure url="https://github.com/thorpjia-cloud/notchplayer/releases/download/v0.2.73/notchplayer-0.2.73-macOS-universal.zip" length="7245102" type="application/octet-stream" sparkle:edSignature="H3ocebxXOEMk/QYqH106XtYULKh9iRuyXS1lPs0NUzPWMsP1culsqHZyJJxtytNLwXrF9jF7LcaQauJbL0eFAw=="/>
         </item>
         <item>
             <title>0.2.71</title>
@@ -294,6 +294,6 @@ Apple Silicon / Intel 通用包，macOS 14+。实时波形需要 macOS 14.2+，�
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: G7+hQAzZqb3LYFz3GSoIAYPbyzYTXackDrV2R7weXSV6UEncSUJyL7aoJ1Pfv7/vaqnz5AGKb5tNA/6iPYWyDg==
-length: 21180
+edSignature: wJXuH5iBzPnH8rrEv2m2YHhZwS7XwsX9HiGtCMNEIwaTa8YLRaC/m4CE0wUfcuXFzbBBtr/mOGTwbh7GfTPZAA==
+length: 21210
 -->
