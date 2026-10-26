@@ -1,0 +1,63 @@
+import AppKit
+
+@main enum ArtworkPaletteCheck {
+    static func hsv(_ color: NSColor) -> (h: CGFloat, s: CGFloat, v: CGFloat) {
+        var h: CGFloat = 0, s: CGFloat = 0, v: CGFloat = 0, a: CGFloat = 0
+        color.usingColorSpace(.sRGB)!.getHue(&h, saturation: &s, brightness: &v, alpha: &a)
+        return (h, s, v)
+    }
+    static func difference(_ a: CGFloat, _ b: CGFloat) -> CGFloat { min(abs(a - b), 1 - abs(a - b)) }
+    static func image(_ pixel: (Int, Int) -> NSColor) -> NSImage {
+        let size = 40
+        var bytes = [UInt8](repeating: 0, count: size * size * 4)
+        for y in 0..<size { for x in 0..<size {
+            let color = pixel(x, y).usingColorSpace(.sRGB)!
+            let a = color.alphaComponent
+            let offset = (y * size + x) * 4
+            for (i, value) in [color.redComponent, color.greenComponent, color.blueComponent, 1].enumerated() {
+                bytes[offset + i] = UInt8((value * a * 255).rounded())
+            }
+        } }
+        let provider = CGDataProvider(data: Data(bytes) as CFData)!
+        let cg = CGImage(width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 32,
+            bytesPerRow: size * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+        return NSImage(cgImage: cg, size: NSSize(width: size, height: size))
+    }
+    static func main() {
+        let blue = NSColor(srgbRed: 0.1, green: 0.3, blue: 0.6, alpha: 1)
+        let orange = NSColor(srgbRed: 1, green: 0.6, blue: 0.1, alpha: 1)
+        let cover = image { x, _ in x < 28 ? blue : (x < 38 ? orange : .white) }
+        let colors = ArtworkPalette.colors(from: cover)
+        precondition(difference(hsv(colors.primary).h, hsv(blue).h) < 0.04, "Most common color must lead")
+        precondition(hsv(colors.primary).v < 0.65, "Keep the actual cover color without artificial brightening")
+        precondition(hsv(colors.secondary).s < 0.02 && hsv(colors.secondary).v > 0.98,
+                     "The brightest color wins even if it only covers a small area")
+        precondition(ArtworkPalette.colors(from: cover) == colors, "Extraction must be deterministic")
+
+        let repeated = ArtworkPalette.colors(from: image { x, _ in x < 28 ? .white : (x < 38 ? .gray : .black) })
+        precondition(hsv(repeated.primary).v > 0.98)
+        precondition(hsv(repeated.secondary).v < 0.02, "Repeated dominant/brightest colors must use the strongest contrasting cover color")
+
+        let dark = ArtworkPalette.colors(from: image { x, _ in x < 30 ? .black : blue })
+        precondition(difference(hsv(dark.primary).h, hsv(blue).h) < 0.04, "Black background cannot outvote the cover color")
+        precondition(hsv(dark.secondary).v < 0.02)
+        let red = ArtworkPalette.colors(from: image { x, y in
+            if y < 5 { return NSColor(white: 0.85, alpha: 1) }
+            if x >= 18 && x < 22 && y >= 25 && y < 30 { return .red }
+            return NSColor(white: 0.08, alpha: 1)
+        })
+        precondition(difference(hsv(red.primary).h, 0) < 0.04 && hsv(red.primary).s > 0.8,
+                     "The red focal color must survive a mostly black/gray cover")
+        precondition(hsv(red.secondary).s < 0.02 && hsv(red.secondary).v > 0.8,
+                     "Gray-white highlights must remain the secondary color")
+        let bordered = ArtworkPalette.colors(from: image { x, y in y < 10 ? .clear : (x < 28 ? blue : orange) })
+        precondition(difference(hsv(bordered.primary).h, hsv(blue).h) < 0.04)
+        precondition(difference(hsv(bordered.secondary).h, hsv(orange).h) < 0.04)
+        let single = ArtworkPalette.colors(from: image { _, _ in blue })
+        precondition(single.primary == single.secondary, "A solid cover cannot invent a second color")
+        precondition(ArtworkPalette.colors(from: image { _, _ in .clear }) == ArtworkPalette.fallback)
+        print("PASS dominant color, brightest accent, duplicate contrast fallback, original tones, transparency, and deterministic extraction")
+    }
+}

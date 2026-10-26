@@ -10,7 +10,7 @@ final class MediaService: ObservableObject {
     @Published var album = ""
     @Published var source = "系统正在播放"
     @Published var artwork: NSImage?
-    @Published private(set) var artworkAccent = ArtworkPalette.fallback
+    @Published private(set) var artworkColors = ArtworkPalette.fallback
     private var artworkToken: String?
     @Published var playing = false
     @Published var available = false
@@ -141,11 +141,11 @@ final class MediaService: ObservableObject {
         guard encoded != artworkToken else { return }
         artworkToken = encoded
         guard let encoded, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) else {
-            artwork = nil; artworkAccent = ArtworkPalette.fallback
+            artwork = nil; artworkColors = ArtworkPalette.fallback
             return
         }
         artwork = image
-        artworkAccent = ArtworkPalette.accent(from: image)
+        artworkColors = ArtworkPalette.colors(from: image)
     }
     private func assign<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<MediaService, Value>, _ value: Value) {
         if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }

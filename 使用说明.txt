@@ -1,4 +1,4 @@
-notchplayer — 免费试用版 0.2.71
+notchplayer — 免费试用版 0.2.72
 
 安装
 1. 打开 notchplayer 的 DMG，把 notchplayer.app 拖入 Applications（应用程序）。

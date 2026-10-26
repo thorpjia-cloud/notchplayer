@@ -329,8 +329,9 @@ private struct CompactWingReveal: AnimatableModifier {
 struct MusicView: View {
     @ObservedObject var model: NookModel
     @ObservedObject var media: MediaService
-    private var accent: Color { Color(nsColor: media.artworkAccent) }
-    private var glassTint: Color { Color(nsColor: ArtworkPalette.glassTint(from: media.artworkAccent)) }
+    private var accent: Color { Color(nsColor: media.artworkColors.primary) }
+    private var secondaryAccent: Color { Color(nsColor: media.artworkColors.secondary) }
+    private var glassTint: Color { accent }
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
@@ -473,7 +474,7 @@ struct MusicView: View {
                                         style: .circular))
     }
     private var bars: some View {
-        SpectrumBars(spectrum: media.spectrum, accent: accent)
+        SpectrumBars(spectrum: media.spectrum, primary: accent, secondary: secondaryAccent)
     }
 }
 
@@ -524,7 +525,16 @@ struct VolumeControl: View {
 
 struct SpectrumBars: View {
     @ObservedObject var spectrum: AudioSpectrum
-    var accent: Color
+    var primary: Color
+    var secondary: Color
+    private var gradient: LinearGradient {
+        LinearGradient(stops: [
+            .init(color: primary, location: 0),
+            .init(color: primary, location: 0.16),
+            .init(color: secondary, location: 0.84),
+            .init(color: secondary, location: 1)
+        ], startPoint: .top, endPoint: .bottom)
+    }
     var body: some View {
         Group {
             if #available(macOS 26.0, *) {
@@ -532,40 +542,44 @@ struct SpectrumBars: View {
                 GlassEffectContainer(spacing: 0) {
                     HStack(alignment: .center, spacing: 2) {
                         ForEach(0..<4) { i in
-                            Capsule().fill(
-                                LinearGradient(stops: [
-                                    .init(color: accent.opacity(0.32), location: 0),
-                                    .init(color: accent.opacity(0.08), location: 0.5),
-                                    .init(color: accent.opacity(0.26), location: 1)
-                                ], startPoint: .leading, endPoint: .trailing)
-                            )
+                            Capsule().fill(.clear)
                             .frame(width: 3.5, height: 3 + 13 * spectrum.levels[i])
-                            .glassEffect(.clear.tint(accent.opacity(0.72)), in: Capsule())
-                            .overlay {
-                                // At this scale the native rim needs a narrow directional glint.
-                                Capsule().strokeBorder(
-                                    LinearGradient(stops: [
-                                        .init(color: .white.opacity(0.82), location: 0),
-                                        .init(color: accent.opacity(0.5), location: 0.32),
-                                        .init(color: .white.opacity(0.08), location: 0.6),
-                                        .init(color: .white.opacity(0.55), location: 1)
-                                    ], startPoint: .leading, endPoint: .trailing), lineWidth: 0.65
-                                )
-                            }
+                            .glassEffect(.clear, in: Capsule())
                         }
                     }
                 }
                 .environment(\.appearsActive, true)
                 .materialActiveAppearance(.active)
+                // Outside the glass container, the two hues survive its native optical compositing.
+                .overlay {
+                    HStack(alignment: .center, spacing: 2) {
+                        ForEach(0..<4) { i in
+                            Capsule().fill(gradient).opacity(0.78)
+                                .overlay {
+                                    // At this scale the native rim needs a narrow directional glint.
+                                    Capsule().strokeBorder(
+                                        LinearGradient(stops: [
+                                            .init(color: .white.opacity(0.82), location: 0),
+                                            .init(color: .white.opacity(0.12), location: 0.32),
+                                            .init(color: .white.opacity(0.08), location: 0.6),
+                                            .init(color: .white.opacity(0.55), location: 1)
+                                        ], startPoint: .leading, endPoint: .trailing), lineWidth: 0.65
+                                    )
+                                }
+                                .frame(width: 3.5, height: 3 + 13 * spectrum.levels[i])
+                        }
+                    }
+                }
             } else {
                 HStack(alignment: .center, spacing: 2) {
                     ForEach(0..<4) { i in
-                        Capsule().fill(accent).frame(width: 3.5, height: 3 + 13 * spectrum.levels[i])
+                        Capsule().fill(gradient).frame(width: 3.5, height: 3 + 13 * spectrum.levels[i])
                     }
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: accent)
+        .animation(.easeInOut(duration: 0.35), value: primary)
+        .animation(.easeInOut(duration: 0.35), value: secondary)
         .help(spectrum.status)
     }
 }
