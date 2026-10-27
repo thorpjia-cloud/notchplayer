@@ -64,7 +64,7 @@ import AppKit
 
         let dark = ArtworkPalette.colors(from: image { x, _ in x < 30 ? .black : blue })
         precondition(difference(hsv(dark.primary).h, hsv(blue).h) < 0.04, "Black background cannot outvote the cover color")
-        precondition(hsv(dark.secondary).v < 0.02)
+        precondition(difference(hsv(dark.secondary).h, hsv(blue).h) < 0.04, "Black background must not erase the waveform color")
         let red = ArtworkPalette.colors(from: image { x, y in
             if y < 5 { return NSColor(white: 0.85, alpha: 1) }
             if x >= 18 && x < 22 && y >= 25 && y < 30 { return .red }
@@ -90,6 +90,12 @@ import AppKit
         let bordered = ArtworkPalette.colors(from: image { x, y in y < 10 ? .clear : (x < 28 ? blue : orange) })
         precondition(difference(hsv(bordered.primary).h, hsv(blue).h) < 0.04)
         precondition(difference(hsv(bordered.secondary).h, hsv(orange).h) < 0.04)
+        let warm = ArtworkPalette.colors(from: image { x, y in
+            if x == 0 && y < 10 { return .white }
+            return NSColor(calibratedHue: 0.07, saturation: 0.8, brightness: x < 20 ? 0.45 : 0.90, alpha: 1)
+        })
+        precondition(hsv(warm.secondary).s > 0.6 && difference(hsv(warm.primary).h, hsv(warm.secondary).h) < 0.04,
+                     "Tiny white lettering must not replace the warm cover's shadow tone")
         let single = ArtworkPalette.colors(from: image { _, _ in blue })
         precondition(single.primary == single.secondary, "A solid cover cannot invent a second color")
         precondition(ArtworkPalette.colors(from: image { _, _ in .clear }) == ArtworkPalette.fallback)

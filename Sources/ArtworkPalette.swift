@@ -49,6 +49,17 @@ enum ArtworkPalette {
         return min(distance, 1 - distance)
     }
 
+    private static func shade(_ swatches: [Swatch], percentile: CGFloat) -> NSColor? {
+        let sorted = swatches.sorted { brightness($0.color) < brightness($1.color) }
+        let threshold = sorted.reduce(CGFloat.zero) { $0 + $1.count } * percentile
+        var count: CGFloat = 0
+        for swatch in sorted {
+            count += swatch.count
+            if count >= threshold { return swatch.color }
+        }
+        return nil
+    }
+
     private static func hueFamilies(in swatches: [Swatch]) -> [Swatch] {
         let binCount = 72
         var hues = [Swatch](repeating: Swatch(), count: binCount)
@@ -104,7 +115,19 @@ enum ArtworkPalette {
         }.map(\.element)
         let colors = ranked.map(\.color)
         let families = hueFamilies(in: ranked)
-        guard let primary = families.first?.color ?? colors.first else { return fallback }
+        guard var primary = families.first?.color ?? colors.first else { return fallback }
+        if let family = families.first {
+            // Hue area chooses the family; a populated, colorful swatch avoids muddy shadow averages.
+            let representatives = ranked.filter {
+                $0.count >= max(2, family.count * 0.005) && $0.color.saturationComponent >= 0.25
+                    && hueDistance(primary, $0.color) <= 1.0 / 32
+            }
+            func score(_ swatch: Swatch) -> CGFloat {
+                let color = swatch.color
+                return color.saturationComponent * pow(color.brightnessComponent, 2)
+            }
+            if let representative = representatives.max(by: { score($0) < score($1) }) { primary = representative.color }
+        }
         let area = ranked.reduce(CGFloat.zero) { $0 + $1.count }
         // A second substantial hue is more representative than a tiny white reflection or lettering.
         // Area times color separation favors a real contrasting region over isolated colored speckles.
@@ -115,6 +138,21 @@ enum ArtworkPalette {
         }
         if let contrastingFamily {
             return Colors(primary: primary, secondary: contrastingFamily.color)
+        }
+        if !families.isEmpty {
+            let brightNeutrals = ranked.filter { $0.color.saturationComponent < 0.18 && brightness($0.color) > 0.08 }
+            let neutralArea = brightNeutrals.reduce(CGFloat.zero) { $0 + $1.count }
+            // A white background matters; tiny white lettering should not turn a warm cover's bars white.
+            if neutralArea >= area * 0.08 {
+                return Colors(primary: primary, secondary: shade(brightNeutrals, percentile: 0.85)!)
+            }
+            let shades = ranked.filter {
+                $0.color.saturationComponent >= 0.25 && $0.color.brightnessComponent >= 0.25 && hueDistance(primary, $0.color) < 1.0 / 8
+            }
+            if let shadow = shade(shades, percentile: 0.20) {
+                // Use a real shadow tone from the same hue family when no second region is present.
+                return Colors(primary: primary, secondary: shadow)
+            }
         }
         var lightest = primary
         var contrast = primary

@@ -7,31 +7,32 @@ struct SpectrumBarDisplay: View {
     let lower: Color
 
     private var gradient: LinearGradient {
-        // Short bars need color at both ends, with a compact transition that does not wash them together.
+        // Readable endpoints keep the smooth vertical transition visible on short bars.
         LinearGradient(stops: [
             .init(color: upper, location: 0),
-            .init(color: upper, location: 0.30),
-            .init(color: lower, location: 0.70),
+            .init(color: upper, location: 0.12),
+            .init(color: lower, location: 0.88),
             .init(color: lower, location: 1)
         ], startPoint: .top, endPoint: .bottom)
     }
 
     private var coloredBars: some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach(0..<4) { i in
-                Capsule().fill(gradient).opacity(0.94)
+        HStack(alignment: .center, spacing: 1.25) {
+            ForEach(levels.indices, id: \.self) { i in
+                Capsule().fill(gradient).opacity(0.98)
                     .overlay {
-                        // Keep the reflection subpixel-thin; a wide white rim erases a 3.5 pt bar's hue.
+                        // Keep the reflection subpixel-thin; a wide white rim erases a narrow bar's hue.
                         Capsule().strokeBorder(
                             LinearGradient(stops: [
-                                .init(color: .white.opacity(0.38), location: 0),
-                                .init(color: .clear, location: 0.30),
+                                .init(color: .white.opacity(0.16), location: 0),
+                                .init(color: .clear, location: 0.12),
                                 .init(color: .clear, location: 0.72),
-                                .init(color: .white.opacity(0.16), location: 1)
-                            ], startPoint: .leading, endPoint: .trailing), lineWidth: 0.3
+                                .init(color: .white.opacity(0.06), location: 1)
+                            ], startPoint: .leading, endPoint: .trailing), lineWidth: 0.2
                         )
                     }
-                    .frame(width: 3.5, height: 3 + 13 * levels[i])
+                    .colorMultiply(Color(white: 1 - 0.32 * Double(i) / Double(max(1, levels.count - 1))))
+                    .frame(width: 2.25, height: 2.25 + 13.75 * levels[i])
             }
         }
     }
@@ -40,10 +41,10 @@ struct SpectrumBarDisplay: View {
         Group {
             if #available(macOS 26.0, *) {
                 GlassEffectContainer(spacing: 0) {
-                    HStack(alignment: .center, spacing: 2) {
-                        ForEach(0..<4) { i in
+                    HStack(alignment: .center, spacing: 1.25) {
+                        ForEach(levels.indices, id: \.self) { i in
                             Capsule().fill(.clear)
-                                .frame(width: 3.5, height: 3 + 13 * levels[i])
+                                .frame(width: 2.25, height: 2.25 + 13.75 * levels[i])
                                 .glassEffect(.clear, in: Capsule())
                         }
                     }

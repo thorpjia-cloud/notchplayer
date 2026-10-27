@@ -5,7 +5,7 @@ import CoreAudio
 // A short, overlapping FFT keeps bass resolution without visibly delaying transients.
 final class SpectrumAnalyzer {
     static let count = 2048
-    static let ranges: [ClosedRange<Double>] = [60...250, 250...1000, 1000...4000, 4000...16000]
+    static let ranges: [ClosedRange<Double>] = [60...160, 160...400, 400...1000, 1000...2500, 2500...6300, 6300...16000]
     private let sampleRate: Double
     private let setup = vDSP_create_fftsetup(11, FFTRadix(kFFTRadix2))!
     private var window = [Float](repeating: 0, count: count)
@@ -19,7 +19,7 @@ final class SpectrumAnalyzer {
     private var hop = 0
     private var normalization: Float = 1
     private let lock = NSLock()
-    private var latest = [Float](repeating: 0, count: 4)
+    private var latest = [Float](repeating: 0, count: SpectrumAnalyzer.ranges.count)
     private var lastFrame: TimeInterval = 0
     private(set) var receivedSignal = false
 
@@ -93,12 +93,12 @@ final class SpectrumAnalyzer {
     }
     func snapshot() -> [Float] {
         lock.lock(); defer { lock.unlock() }
-        return ProcessInfo.processInfo.systemUptime - lastFrame < 0.25 ? latest : [0, 0, 0, 0]
+        return ProcessInfo.processInfo.systemUptime - lastFrame < 0.25 ? latest : Array(repeating: 0, count: SpectrumAnalyzer.ranges.count)
     }
 }
 
 final class AudioSpectrum: ObservableObject {
-    @Published private(set) var levels: [CGFloat] = [0, 0, 0, 0]
+    @Published private(set) var levels: [CGFloat] = Array(repeating: 0, count: SpectrumAnalyzer.ranges.count)
     @Published private(set) var status = "播放后显示实时频谱：从左到右为低频至高频"
     private var tap: AudioObjectID = 0
     private var device: AudioObjectID = 0
@@ -133,7 +133,7 @@ final class AudioSpectrum: ObservableObject {
                 DispatchQueue.main.async {
                     guard self.generation == request else { return }
                     self.analyzer = analyzer
-                    self.status = "实时频谱：低频 60–250 Hz · 中低频 250–1k Hz · 中高频 1–4k Hz · 高频 4–16k Hz"
+                    self.status = "六段实时频谱：60–160 Hz · 160–400 Hz · 400–1k Hz · 1–2.5k Hz · 2.5–6.3k Hz · 6.3–16k Hz"
                 }
             } catch {
                 self.stopCapture()
@@ -153,7 +153,7 @@ final class AudioSpectrum: ObservableObject {
             let now = ProcessInfo.processInfo.systemUptime
             let dt = min(0.1, now - self.previousTick)
             self.previousTick = now
-            let target = self.analyzer?.snapshot() ?? [0, 0, 0, 0]
+            let target = self.analyzer?.snapshot() ?? Array(repeating: 0, count: SpectrumAnalyzer.ranges.count)
             let next = self.levels.enumerated().map { i, value -> CGFloat in
                 let destination = CGFloat(target[i])
                 let tau = destination > value ? 0.035 : 0.18
@@ -233,7 +233,7 @@ final class AudioSpectrum: ObservableObject {
         activeSource = nil; generation += 1; analyzer = nil
         captureQueue.async { [self] in stopCapture() }
         timer?.invalidate(); timer = nil
-        levels = [0, 0, 0, 0]
+        levels = Array(repeating: 0, count: SpectrumAnalyzer.ranges.count)
     }
     private static func address(_ selector: AudioObjectPropertySelector) -> AudioObjectPropertyAddress {
         AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)

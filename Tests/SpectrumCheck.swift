@@ -3,7 +3,7 @@ import Foundation
 @main enum SpectrumCheck {
     static func main() {
         let rate = 48000.0
-        for (expected, frequency) in [120.0, 500, 2000, 8000].enumerated() {
+        for (expected, frequency) in [100.0, 250, 630, 1600, 4000, 10000].enumerated() {
             let analyzer = SpectrumAnalyzer(sampleRate: rate)
             // Synthetic tones verify frequency routing, including opposite-phase stereo.
             for i in 0..<4096 {
