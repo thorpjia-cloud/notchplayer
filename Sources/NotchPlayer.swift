@@ -121,12 +121,17 @@ struct SiriGlassSurface: View, Animatable {
         set { progress = newValue }
     }
     private var reveal: Double { glassReveal(progress, from: 0.08, to: 0.88) }
+    private var nativeLensOutline: NotchOutline {
+        var lens = outline
+        lens.opticalTopExtension = 32
+        return lens
+    }
     var body: some View {
         ZStack {
             if #available(macOS 26.0, *) {
                 // Full native optics need the active window path; masking them suppresses the actual lensing.
                 Color.clear
-                    .glassEffect(.clear.interactive(false), in: outline)
+                    .glassEffect(.clear.interactive(false), in: nativeLensOutline)
                     .glassEffectTransition(.identity)
                     .opacity(nativeGlassIsActive ? reveal : 0)
                     .environment(\.appearsActive, true)

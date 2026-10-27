@@ -62,6 +62,12 @@ import SwiftUI
             }
             let expanded = sample(NotchOutline(compactHeight: top)
                 .path(in: CGRect(x: 0, y: 0, width: 360, height: top + 100)))
+            var opticalOutline = NotchOutline(compactHeight: top)
+            opticalOutline.opticalTopExtension = 32
+            let optical = sample(opticalOutline.path(in: CGRect(x: 0, y: 0, width: 360, height: top + 100)))
+            // Only the closing edge moves offscreen; every visible corner and side stays identical.
+            precondition(Array(optical.prefix(expanded.count)) == expanded)
+            precondition(optical.dropFirst(expanded.count).map(\.y) == [-32, -32, 0])
             let compactPoints = sample(compact)
             // Expanding may move the corners, but must not change either corner's curvature.
             for i in 0..<50 {

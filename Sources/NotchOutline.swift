@@ -22,6 +22,7 @@ struct NotchOutline: Shape {
     var drawsTopEdge = true
     var compactHeight: CGFloat = 32
     var compactTension: CGFloat = 0
+    var opticalTopExtension: CGFloat = 0
 
     func path(in rect: CGRect) -> Path {
         let w = max(0, rect.width), h = max(0, rect.height)
@@ -54,7 +55,15 @@ struct NotchOutline: Shape {
         p.addCurve(to: .zero,
                    control1: CGPoint(x: shoulder, y: topControlY),
                    control2: CGPoint(x: topControlX, y: 0))
-        if drawsTopEdge { p.closeSubpath() }
+        if drawsTopEdge {
+            // The native lens closes above the screen so its top specular edge stays offscreen.
+            if opticalTopExtension > 0 {
+                p.addLine(to: CGPoint(x: 0, y: -opticalTopExtension))
+                p.addLine(to: CGPoint(x: w, y: -opticalTopExtension))
+                p.addLine(to: CGPoint(x: w, y: 0))
+            }
+            p.closeSubpath()
+        }
         return p.offsetBy(dx: rect.minX, dy: rect.minY)
     }
 }
