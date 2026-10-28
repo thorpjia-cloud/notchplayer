@@ -12,6 +12,9 @@ final class MediaService: ObservableObject {
     @Published var artwork: NSImage?
     @Published private(set) var artworkColors = ArtworkPalette.fallback
     private var artworkToken: String?
+    private var artworkState = ArtworkState()
+    private var artworkExpiry: DispatchWorkItem?
+    private var connectionID = UUID()
     @Published var playing = false
     @Published var available = false
     @Published private(set) var sessionActive = false
@@ -33,6 +36,8 @@ final class MediaService: ObservableObject {
 
     func start() {
         stopped = false
+        let connection = UUID()
+        connectionID = connection
         volume.start()
         terminationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
@@ -51,7 +56,7 @@ final class MediaService: ObservableObject {
             let chunk = handle.availableData
             if chunk.isEmpty { handle.readabilityHandler = nil; return }
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.connectionID == connection, !self.stopped else { return }
                 self.buffer.append(chunk)
                 while let newline = self.buffer.firstIndex(of: 10) {
                     let line = self.buffer.prefix(upTo: newline)
@@ -64,7 +69,9 @@ final class MediaService: ObservableObject {
         }
         process.terminationHandler = { [weak self] _ in
             DispatchQueue.main.async {
-                guard let self, !self.stopped else { return }
+                guard let self, self.connectionID == connection, !self.stopped else { return }
+                self.artworkState.beginGap(now: ProcessInfo.processInfo.systemUptime)
+                self.refreshArtwork()
                 self.error = "音乐连接已断开，请从菜单重新连接"
             }
         }
@@ -73,6 +80,8 @@ final class MediaService: ObservableObject {
     }
     func stop() {
         stopped = true
+        connectionID = UUID()
+        resetArtwork()
         if let terminationObserver { NSWorkspace.shared.notificationCenter.removeObserver(terminationObserver) }
         terminationObserver = nil
         spectrum.stop()
@@ -100,6 +109,10 @@ final class MediaService: ObservableObject {
         guard let title = value["title"] as? String, !title.isEmpty else {
             // A metadata gap is not a stopped player; keep its controls and timeline usable.
             if !session.isActive { clearPlayback() }
+            else {
+                artworkState.receive(value, now: ProcessInfo.processInfo.systemUptime)
+                refreshArtwork()
+            }
             return
         }
         assign(\.title, title)
@@ -123,7 +136,8 @@ final class MediaService: ObservableObject {
         } else { timestamp = Date() }
         rate = (value["playbackRate"] as? NSNumber)?.doubleValue ?? (playing ? 1 : 0)
         if playing && rate == 0 { rate = 1 }
-        updateArtwork(value["artworkData"] as? String)
+        artworkState.receive(value, now: ProcessInfo.processInfo.systemUptime)
+        refreshArtwork()
         progress.update(elapsed: elapsed, timestamp: timestamp, rate: rate, duration: duration, playing: playing, available: available)
         let application = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
             ?? (value["processIdentifier"] as? NSNumber).flatMap { NSRunningApplication(processIdentifier: $0.int32Value) }
@@ -133,9 +147,28 @@ final class MediaService: ObservableObject {
     private func clearPlayback() {
         assign(\.playing, false); assign(\.available, false)
         assign(\.title, "还没有正在播放的音乐"); assign(\.artist, "在你喜欢的播放器中播放一首歌")
-        assign(\.album, ""); assign(\.duration, 0); updateArtwork(nil)
+        assign(\.album, ""); assign(\.duration, 0); resetArtwork()
         progress.update(elapsed: 0, timestamp: Date(), rate: 0, duration: duration, playing: false, available: false)
         spectrum.update(bundleID: nil, playing: false)
+    }
+    private func resetArtwork() {
+        artworkExpiry?.cancel(); artworkExpiry = nil
+        artworkState = ArtworkState()
+        updateArtwork(nil)
+    }
+    private func refreshArtwork() {
+        artworkExpiry?.cancel(); artworkExpiry = nil
+        updateArtwork(artworkState.artwork)
+        guard let deadline = artworkState.expiresAt else { return }
+        let connection = connectionID
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !self.stopped, self.connectionID == connection,
+                  self.artworkState.expiresAt == deadline else { return }
+            self.artworkState.expire(now: ProcessInfo.processInfo.systemUptime)
+            self.refreshArtwork()
+        }
+        artworkExpiry = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, deadline - ProcessInfo.processInfo.systemUptime), execute: work)
     }
     private func updateArtwork(_ encoded: String?) {
         guard encoded != artworkToken else { return }

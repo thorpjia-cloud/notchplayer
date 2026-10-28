@@ -331,20 +331,8 @@ extern void adapter_stream() {
         if (liveData[kMRAPlaying] != nil) {
             converted[kMRAPlaying] = liveData[kMRAPlaying];
         }
-        // Use the old artwork data, since often the MediaRemote framework
-        // unloads the artwork and then loads it again shortly after.
-        // Only do this when the items have the same identity.
-        if (isSameItemIdentity(liveData, converted) &&
-            liveData[kMRAArtworkData] != nil &&
-            liveData[kMRAArtworkData] != [NSNull null] &&
-            converted[kMRAArtworkData] == nil) {
-            converted[kMRAArtworkData] = liveData[kMRAArtworkData];
-            if (liveData[kMRAArtworkMimeType] != nil &&
-                liveData[kMRAArtworkMimeType] != [NSNull null] &&
-                converted[kMRAArtworkMimeType] == nil) {
-                converted[kMRAArtworkMimeType] = liveData[kMRAArtworkMimeType];
-            }
-        }
+        // Preserve missing artwork in the payload. The client owns the bounded grace period;
+        // silently restoring the previous bytes here prevents its placeholder from ever appearing.
 
         liveDataStats = compareIdentifyingTrackKeys(liveData, converted);
         [liveData setDictionary:converted];
