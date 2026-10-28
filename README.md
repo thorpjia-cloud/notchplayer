@@ -6,7 +6,7 @@
 
 ## 安装
 
-1. 在 Releases 下载 `notchplayer-0.2.77-macOS-universal.dmg`。
+1. 在 Releases 下载 `notchplayer-0.2.78-macOS-universal.dmg`。
 2. 打开 DMG，把 **notchplayer.app** 拖进 **Applications**，然后从“应用程序”打开。
 3. 首次播放歌曲后，封面和波形从刘海两侧浮现；鼠标移入后点击展开。暂停、切歌或切换到其他应用时保留，退出当前播放器后自动隐藏。右键面板可打开设置、检查更新、查看说明、重新连接播放器或退出。设置窗口打开时显示 Dock 图标，关闭设置后继续后台播放。
 4. 首次播放时，允许系统音频录制，让频谱反映当前歌曲的高低频。

@@ -25,6 +25,27 @@ import SwiftUI
     }
 
     static func main() {
+        var curves: [(CGPoint, CGPoint, CGPoint, CGPoint)] = []
+        var current = CGPoint.zero
+        NotchOutline().path(in: CGRect(x: 0, y: 0, width: 360, height: 132)).forEach { element in
+            switch element {
+            case let .move(to), let .line(to): current = to
+            case let .curve(to, c1, c2): curves.append((current, c1, c2, to)); current = to
+            default: break
+            }
+        }
+        func subtract(_ a: CGPoint, _ b: CGPoint) -> CGPoint { CGPoint(x: a.x-b.x, y: a.y-b.y) }
+        func cross(_ a: CGPoint, _ b: CGPoint) -> CGFloat { a.x*b.y-a.y*b.x }
+        // SwiftUI Path may quantize control points to float precision.
+        func close(_ a: CGPoint, _ b: CGPoint) { precondition(hypot(a.x-b.x,a.y-b.y)<0.0001) }
+        for i in stride(from: 0, to: curves.count, by: 2) {
+            let (s,a,b,m) = curves[i], (n,c,d,e) = curves[i+1]
+            precondition(abs(cross(subtract(a,s),subtract(b,a)))<0.00001, "Entry curvature must be zero")
+            precondition(abs(cross(subtract(e,d),subtract(d,c)))<0.00001, "Exit curvature must be zero")
+            close(m,n)
+            close(subtract(m,b),subtract(c,n))
+            close(subtract(subtract(m,b),subtract(b,a)),subtract(subtract(d,c),subtract(c,n)))
+        }
         let width = CompactNotchLayout.width(notchWidth: 185)
         precondition(width == 273)
         precondition((width - 185) / 2 - CompactNotchLayout.outerInset
@@ -70,12 +91,12 @@ import SwiftUI
             precondition(optical.dropFirst(expanded.count).map(\.y) == [-32, -32, 0])
             let compactPoints = sample(compact)
             // Expanding may move the corners, but must not change either corner's curvature.
-            for i in 0..<50 {
+            for i in 0..<98 {
                 let expected = CGPoint(x: compactPoints[i].x + 360 - width,
-                                       y: compactPoints[i].y + (i >= 25 ? 100 : 0))
+                                       y: compactPoints[i].y + (i >= 49 ? 100 : 0))
                 precondition(hypot(expanded[i].x - expected.x, expanded[i].y - expected.y) < 0.0001)
             }
         }
-        print("Compact width, hardware clearance, unclipped wings, monotone morph edges, and consistent compact/expanded corners passed")
+        print("Compact width, hardware clearance, unclipped wings, monotone morph edges, and consistent compact/expanded corners and curvature continuity passed")
     }
 }

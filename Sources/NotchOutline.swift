@@ -31,30 +31,25 @@ struct NotchOutline: Shape {
         let shoulder = min(h / 3, w / 4,
                            NotchCorners.topRadius * scale - 1.5 * scale * tension)
         // A straight side must remain between the upper and lower curves, even mid-morph.
+        // A longer easing span preserves the old diagonal cut while softening entry into the corner.
         let bottom = min(max(0, h - shoulder - 1), max(0, w / 2 - shoulder),
-                         NotchCorners.radius * scale + scale * tension)
-        let circle: CGFloat = 0.5522847498
-        let topControlX = shoulder * circle
-        let topControlY = shoulder * (1 - circle)
-        // Keep the same circular corners as the compact notch while the side walls lengthen.
-        let bottomControl = bottom * circle
+                         (NotchCorners.radius * scale + scale * tension) * 1.5)
         var p = Path()
         p.move(to: CGPoint(x: w, y: 0))
-        p.addCurve(to: CGPoint(x: w - shoulder, y: shoulder),
-                   control1: CGPoint(x: w - topControlX, y: 0),
-                   control2: CGPoint(x: w - shoulder, y: topControlY))
+        smoothCorner(&p, from: CGPoint(x: w, y: 0),
+                     through: CGPoint(x: w - shoulder, y: 0),
+                     to: CGPoint(x: w - shoulder, y: shoulder))
         p.addLine(to: CGPoint(x: w - shoulder, y: h - bottom))
-        p.addCurve(to: CGPoint(x: w - shoulder - bottom, y: h),
-                   control1: CGPoint(x: w - shoulder, y: h - bottom + bottomControl),
-                   control2: CGPoint(x: w - shoulder - bottom + bottomControl, y: h))
+        smoothCorner(&p, from: CGPoint(x: w - shoulder, y: h - bottom),
+                     through: CGPoint(x: w - shoulder, y: h),
+                     to: CGPoint(x: w - shoulder - bottom, y: h))
         p.addLine(to: CGPoint(x: shoulder + bottom, y: h))
-        p.addCurve(to: CGPoint(x: shoulder, y: h - bottom),
-                   control1: CGPoint(x: shoulder + bottom - bottomControl, y: h),
-                   control2: CGPoint(x: shoulder, y: h - bottom + bottomControl))
+        smoothCorner(&p, from: CGPoint(x: shoulder + bottom, y: h),
+                     through: CGPoint(x: shoulder, y: h),
+                     to: CGPoint(x: shoulder, y: h - bottom))
         p.addLine(to: CGPoint(x: shoulder, y: shoulder))
-        p.addCurve(to: .zero,
-                   control1: CGPoint(x: shoulder, y: topControlY),
-                   control2: CGPoint(x: topControlX, y: 0))
+        smoothCorner(&p, from: CGPoint(x: shoulder, y: shoulder),
+                     through: CGPoint(x: shoulder, y: 0), to: .zero)
         if drawsTopEdge {
             // The native lens closes above the screen so its top specular edge stays offscreen.
             if opticalTopExtension > 0 {
@@ -66,4 +61,18 @@ struct NotchOutline: Shape {
         }
         return p.offsetBy(dx: rect.minX, dy: rect.minY)
     }
+
+    private func smoothCorner(_ path: inout Path, from start: CGPoint, through corner: CGPoint, to end: CGPoint) {
+        let a = CGSize(width: corner.x - start.x, height: corner.y - start.y)
+        let b = CGSize(width: end.x - corner.x, height: end.y - corner.y)
+        func point(_ u: CGFloat, _ v: CGFloat) -> CGPoint {
+            CGPoint(x: start.x + a.width * u + b.width * v,
+                    y: start.y + a.height * u + b.height * v)
+        }
+        // Collinear endpoint controls bring curvature to zero at each straight edge.
+        // The two cubics also share first and second derivatives at their midpoint.
+        path.addCurve(to: point(0.8, 0.2), control1: point(0.2, 0), control2: point(0.6, 0))
+        path.addCurve(to: end, control1: point(1, 0.4), control2: point(1, 0.8))
+    }
+
 }
