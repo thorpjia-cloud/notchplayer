@@ -6,7 +6,7 @@
 
 ## 安装
 
-1. 在 Releases 下载 `notchplayer-0.2.80-macOS-universal.dmg`。
+1. 在 Releases 下载 `notchplayer-0.2.81-macOS-universal.dmg`。
 2. 打开 DMG，把 **notchplayer.app** 拖进 **Applications**，然后从“应用程序”打开。
 3. 首次播放歌曲后，封面和波形从刘海两侧浮现；鼠标移入后点击展开。暂停、切歌或切换到其他应用时保留，退出当前播放器后自动隐藏。右键面板可打开设置、检查更新、查看说明、重新连接播放器或退出。设置窗口打开时显示 Dock 图标，关闭设置后继续后台播放。
 4. 首次播放时，允许系统音频录制，让频谱反映当前歌曲的高低频。
@@ -65,3 +65,7 @@ cd notchplayer
 感谢 **[mediaremote-adapter](https://github.com/ungive/mediaremote-adapter)** 作者 Jonas van den Berg；原始 BSD-3-Clause 许可证随源码和应用保留。
 
 本项目与上述产品及其开发者无隶属或赞助关系。完整署名与说明见 [NOTICE.md](NOTICE.md)。
+
+### 网易云高清封面
+
+系统缩略图会先显示；应用只读查询网易云本地歌曲元数据，按当前歌名、专辑、歌手与时长匹配封面来源，再校验图片内容，异步升级到 600 px。来源不可用或校验失败时继续使用系统封面。目前该高清补全路径针对网易云，其他播放器继续使用系统提供的图片。

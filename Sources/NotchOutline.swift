@@ -6,6 +6,13 @@ enum NotchCorners {
     // https://notchbay.com/blog/macbook-notch-size/
     static let topRadius: CGFloat = 4
     static let radius: CGFloat = 8
+    static let expandedRadius: CGFloat = 28
+    static let contentInset: CGFloat = 10
+    static let expandedContentHeight: CGFloat = 176
+    static func bottomRadius(height: CGFloat, compactHeight: CGFloat) -> CGFloat {
+        let p = min(1, max(0, (height - compactHeight) / expandedContentHeight))
+        return radius * compactHeight / 32 + (expandedRadius - radius * compactHeight / 32) * p
+    }
 }
 
 enum CompactNotchLayout {
@@ -30,23 +37,27 @@ struct NotchOutline: Shape {
         let tension = min(1, max(0, compactTension))
         let shoulder = min(h / 3, w / 4,
                            NotchCorners.topRadius * scale - 1.5 * scale * tension)
-        // A straight side must remain between the upper and lower curves, even mid-morph.
-        // A longer easing span preserves the old diagonal cut while softening entry into the corner.
-        let bottom = min(max(0, h - shoulder - 1), max(0, w / 2 - shoulder),
-                         (NotchCorners.radius * scale + scale * tension) * 1.5)
+        let radius = NotchCorners.bottomRadius(height: h, compactHeight: compactHeight)
+        let lower = UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: radius,
+                                           bottomTrailingRadius: radius, topTrailingRadius: 0, style: .continuous)
+            .path(in: CGRect(x: shoulder, y: 0, width: max(0, w - 2 * shoulder), height: h))
         var p = Path()
         p.move(to: CGPoint(x: w, y: 0))
         smoothCorner(&p, from: CGPoint(x: w, y: 0),
                      through: CGPoint(x: w - shoulder, y: 0),
                      to: CGPoint(x: w - shoulder, y: shoulder))
-        p.addLine(to: CGPoint(x: w - shoulder, y: h - bottom))
-        smoothCorner(&p, from: CGPoint(x: w - shoulder, y: h - bottom),
-                     through: CGPoint(x: w - shoulder, y: h),
-                     to: CGPoint(x: w - shoulder - bottom, y: h))
-        p.addLine(to: CGPoint(x: shoulder + bottom, y: h))
-        smoothCorner(&p, from: CGPoint(x: shoulder + bottom, y: h),
-                     through: CGPoint(x: shoulder, y: h),
-                     to: CGPoint(x: shoulder, y: h - bottom))
+        // Reuse SwiftUI's actual continuous bottom corners, matching the rounded container semantics.
+        var finishedLower = false
+        lower.forEach { element in
+            guard !finishedLower else { return }
+            switch element {
+            case let .move(to): p.addLine(to: to)
+            case let .line(to):
+                if to.y <= 0 { finishedLower = true } else { p.addLine(to: to) }
+            case let .curve(to, c1, c2): p.addCurve(to: to, control1: c1, control2: c2)
+            default: break
+            }
+        }
         p.addLine(to: CGPoint(x: shoulder, y: shoulder))
         smoothCorner(&p, from: CGPoint(x: shoulder, y: shoulder),
                      through: CGPoint(x: shoulder, y: 0), to: .zero)

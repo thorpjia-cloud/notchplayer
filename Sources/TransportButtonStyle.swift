@@ -12,7 +12,7 @@ struct TransportButtonStyle: ButtonStyle {
             .scaleEffect(pressed && !reduceMotion ? 0.88 : 1)
             .opacity(isEnabled ? (pressed ? 0.58 : 1) : 0.4)
             .background {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .circular)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .fill(.white.opacity(pressed ? 0.10 : 0))
             }
             // Keep the full hit area steady while only the symbol compresses.

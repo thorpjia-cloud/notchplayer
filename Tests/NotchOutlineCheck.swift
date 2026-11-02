@@ -38,7 +38,7 @@ import SwiftUI
         func cross(_ a: CGPoint, _ b: CGPoint) -> CGFloat { a.x*b.y-a.y*b.x }
         // SwiftUI Path may quantize control points to float precision.
         func close(_ a: CGPoint, _ b: CGPoint) { precondition(hypot(a.x-b.x,a.y-b.y)<0.0001) }
-        for i in stride(from: 0, to: curves.count, by: 2) {
+        for i in [0, curves.count - 2] {
             let (s,a,b,m) = curves[i], (n,c,d,e) = curves[i+1]
             precondition(abs(cross(subtract(a,s),subtract(b,a)))<0.00001, "Entry curvature must be zero")
             precondition(abs(cross(subtract(e,d),subtract(d,c)))<0.00001, "Exit curvature must be zero")
@@ -89,14 +89,9 @@ import SwiftUI
             // Only the closing edge moves offscreen; every visible corner and side stays identical.
             precondition(Array(optical.prefix(expanded.count)) == expanded)
             precondition(optical.dropFirst(expanded.count).map(\.y) == [-32, -32, 0])
-            let compactPoints = sample(compact)
-            // Expanding may move the corners, but must not change either corner's curvature.
-            for i in 0..<98 {
-                let expected = CGPoint(x: compactPoints[i].x + 360 - width,
-                                       y: compactPoints[i].y + (i >= 49 ? 100 : 0))
-                precondition(hypot(expanded[i].x - expected.x, expanded[i].y - expected.y) < 0.0001)
-            }
+            precondition(NotchCorners.bottomRadius(height: top + NotchCorners.expandedContentHeight, compactHeight: top) == NotchCorners.expandedRadius)
+
         }
-        print("Compact width, hardware clearance, unclipped wings, monotone morph edges, and consistent compact/expanded corners and curvature continuity passed")
+        print("Compact width, hardware clearance, unclipped wings, monotone morph edges, and native continuous bottom corners and smooth concave shoulders passed")
     }
 }

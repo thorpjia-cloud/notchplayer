@@ -4,7 +4,7 @@ import Combine
 
 enum ExpandedMusicLayout {
     static let width: CGFloat = 420
-    static let contentHeight: CGFloat = 176
+    static let contentHeight: CGFloat = NotchCorners.expandedContentHeight
     static let artworkSize: CGFloat = 156
 }
 
@@ -303,6 +303,7 @@ struct NotchMorph: AnimatableModifier {
         content
             .frame(width: (reduceMotion ? size.width : GlassMotion.presenceWidth(progress: presence, notchWidth: notchWidth, visibleWidth: size.width)) + abs(dragX) * 0.1,
                    height: size.height + dragY * 0.12, alignment: .top)
+            .modifier(NotchCornerContainer(topHeight: topHeight, height: size.height))
             .clipShape(outline)
             .background {
                 SiriGlassSurface(nativeGlassIsActive: nativeGlassIsActive, usesBlackHeader: usesBlackHeader, topHeight: topHeight,
@@ -451,11 +452,12 @@ struct MusicView: View {
                 AudioOutputPicker(volume: media.volume, presentationChanged: model.setOutputPickerPresented,
                                   buttonReady: { model.outputPickerButton = $0 }, showsName: true)
                     .frame(maxWidth: .infinity).frame(height: 24)
-                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: NotchCorners.radius))
+                    .background { DeviceCornerBackground() }
             }
             .frame(maxWidth: .infinity).frame(height: ExpandedMusicLayout.artworkSize)
         }
-        .padding(.horizontal, 16).padding(.vertical, 10)
+        .padding(.horizontal, NotchCorners.topRadius * model.topHeight / 32 + NotchCorners.contentInset)
+        .padding(.vertical, NotchCorners.contentInset)
         .frame(height: ExpandedMusicLayout.contentHeight)
     }
     private func cover(size: CGFloat) -> some View {
@@ -468,9 +470,7 @@ struct MusicView: View {
                 }
             }
         }.frame(width: size, height: size)
-            // Preserve the large cover's proportions instead of turning the 22 pt thumbnail into a pill.
-            .clipShape(RoundedRectangle(cornerRadius: NotchCorners.radius * min(1, size / 48) * model.topHeight / 32,
-                                        style: .circular))
+            .modifier(ArtworkCornerClip(expanded: model.expanded, size: size, topHeight: model.topHeight))
     }
     private var bars: some View {
         SpectrumBars(spectrum: media.spectrum,

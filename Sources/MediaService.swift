@@ -11,6 +11,11 @@ final class MediaService: ObservableObject {
     @Published var source = "系统正在播放"
     @Published var artwork: NSImage?
     @Published private(set) var artworkColors = ArtworkPalette.fallback
+    private let highResolutionArtwork: HighResolutionArtwork
+    private var highResolutionTrack: ArtworkState.Track?
+    private var highResolutionDuration: Double = 0
+    private var hasHighResolution = false
+    init(highResolutionArtwork: HighResolutionArtwork = HighResolutionArtwork()) { self.highResolutionArtwork = highResolutionArtwork }
     private var artworkToken: String?
     private var artworkState = ArtworkState()
     private var artworkExpiry: DispatchWorkItem?
@@ -100,7 +105,7 @@ final class MediaService: ObservableObject {
         process.arguments = [script.path, framework.path] + arguments
         return process
     }
-    private func apply(_ value: [String: Any]) {
+    func apply(_ value: [String: Any]) {
         if let processID = session.processID,
            NSRunningApplication(processIdentifier: processID)?.isTerminated != false {
             session.processDidExit(processID)
@@ -152,8 +157,10 @@ final class MediaService: ObservableObject {
         spectrum.update(bundleID: nil, playing: false)
     }
     private func resetArtwork() {
+        highResolutionArtwork.cancel()
         artworkExpiry?.cancel(); artworkExpiry = nil
         artworkState = ArtworkState()
+        highResolutionTrack = nil; highResolutionDuration = 0; hasHighResolution = false
         updateArtwork(nil)
     }
     private func refreshArtwork() {
@@ -171,14 +178,28 @@ final class MediaService: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + max(0, deadline - ProcessInfo.processInfo.systemUptime), execute: work)
     }
     private func updateArtwork(_ encoded: String?) {
-        guard encoded != artworkToken else { return }
+        let imageChanged = encoded != artworkToken
+        let track = artworkState.track
+        guard imageChanged || track != highResolutionTrack || abs(duration - highResolutionDuration) > 0.1 else { return }
+        highResolutionArtwork.cancel()
+        highResolutionTrack = track; highResolutionDuration = duration
+        if !imageChanged && hasHighResolution { return }
         artworkToken = encoded
+        hasHighResolution = false
         guard let encoded, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) else {
             artwork = nil; artworkColors = ArtworkPalette.fallback
             return
         }
         artwork = image
         artworkColors = ArtworkPalette.colors(from: image)
+        guard let track else { return }
+        highResolutionArtwork.resolve(track: track, reference: data, duration: duration) { [weak self] highData in
+            guard let self, self.artworkState.track == track, self.artworkState.artwork == encoded,
+                  let highImage = NSImage(data: highData) else { return }
+            self.hasHighResolution = true
+            self.artwork = highImage
+            // Palette remains based on the stable system thumbnail; resolution upgrades do not flash the tint.
+        }
     }
     private func assign<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<MediaService, Value>, _ value: Value) {
         if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
