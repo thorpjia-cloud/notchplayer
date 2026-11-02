@@ -164,6 +164,10 @@ struct AudioOutputPicker: NSViewRepresentable {
             button.menu = menu
             defer { button.menu = nil }
             menu.autoenablesItems = false
+            let bluetooth = NSMenuItem(title: "连接蓝牙设备…", action: #selector(openBluetoothSettings), keyEquivalent: "")
+            bluetooth.target = self
+            menu.addItem(bluetooth)
+            menu.addItem(.separator())
             let heading = NSMenuItem(title: "声音输出", action: nil, keyEquivalent: "")
             heading.isEnabled = false
             menu.addItem(heading)
@@ -200,6 +204,12 @@ struct AudioOutputPicker: NSViewRepresentable {
             guard let device = item.representedObject as? NSNumber else { return }
             let status = SystemAudioOutput.select(device.uint32Value)
             if status != noErr { selectionError = status }
+        }
+
+        @objc private func openBluetoothSettings() {
+            // The system settings extension declares this legacy identifier and URL support.
+            // Pairing and connection state stay owned by macOS.
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preferences.Bluetooth")!)
         }
 
         @objc private func openSoundSettings() {
