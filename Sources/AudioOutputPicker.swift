@@ -76,6 +76,7 @@ struct AudioOutputPicker: NSViewRepresentable {
     @ObservedObject var volume: OutputVolume
     var presentationChanged: (Bool) -> Void
     var buttonReady: (NSButton) -> Void
+    var showsName = false
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -96,6 +97,10 @@ struct AudioOutputPicker: NSViewRepresentable {
     func updateNSView(_ button: NSButton, context: Context) {
         context.coordinator.volume = volume
         context.coordinator.presentationChanged = presentationChanged
+        button.title = showsName ? " " + volume.outputName : ""
+        button.imagePosition = showsName ? .imageLeading : .imageOnly
+        button.font = .systemFont(ofSize: 10, weight: .medium)
+        button.lineBreakMode = .byTruncatingTail
         button.toolTip = "播放设备：\(volume.outputName)"
         button.setAccessibilityLabel("播放设备：\(volume.outputName)")
     }

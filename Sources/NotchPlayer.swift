@@ -2,6 +2,12 @@ import AppKit
 import SwiftUI
 import Combine
 
+enum ExpandedMusicLayout {
+    static let width: CGFloat = 480
+    static let contentHeight: CGFloat = 208
+    static let artworkSize: CGFloat = 184
+}
+
 final class NookModel: ObservableObject {
     @Published var musicVisible = false
     @Published var acceptsInteraction = false
@@ -38,8 +44,8 @@ final class NookModel: ObservableObject {
     }
     let resetSpring = Animation.spring(response: 0.5, dampingFraction: 1, blendDuration: 0)
     // Hover is a preview state; only a click opens the music controls.
-    var width: CGFloat { expanded ? 360 : closedWidth + (hovering ? 12 : 0) }
-    var height: CGFloat { expanded ? topHeight + 100 : topHeight }
+    var width: CGFloat { expanded ? ExpandedMusicLayout.width : closedWidth + (hovering ? 12 : 0) }
+    var height: CGFloat { expanded ? topHeight + ExpandedMusicLayout.contentHeight : topHeight }
     var hoverFeedback: () -> Void = {
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
     }
@@ -291,7 +297,7 @@ struct NotchMorph: AnimatableModifier {
     func body(content: Content) -> some View {
         let size = GlassMotion.size(progress: progress,
                                     closed: CGSize(width: closedWidth, height: closedHeight),
-                                    open: CGSize(width: 360, height: topHeight + 100))
+                                    open: CGSize(width: ExpandedMusicLayout.width, height: topHeight + ExpandedMusicLayout.contentHeight))
         let tension = reduceMotion ? 0 : GlassMotion.presenceTension(progress: presence) * (1 - min(1, max(0, progress)))
         let outline = NotchOutline(compactHeight: topHeight, compactTension: tension)
         content
@@ -378,19 +384,6 @@ struct MusicView: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .overlay(alignment: .top) {
-            if model.expanded {
-                // Anchor to hardware in the fixed host, outside the panel's resize and drag transforms.
-                AudioOutputPicker(volume: media.volume, presentationChanged: model.setOutputPickerPresented,
-                                  buttonReady: { model.outputPickerButton = $0 })
-                    .frame(width: 24, height: 24)
-                    .offset(x: model.hardwareNotchLeadingOffset - 12 - 4,
-                            y: max(0, (model.topHeight - 24) / 2))
-                    .transition(.opacity)
-                    .allowsHitTesting(model.acceptsInteraction)
-                    .accessibilityHidden(!model.acceptsInteraction)
-            }
-        }
         .ignoresSafeArea(.all)
         .preferredColorScheme(.dark)
         .environment(\.appearsActive, true)
@@ -409,20 +402,38 @@ struct MusicView: View {
         .padding(.horizontal, CompactNotchLayout.outerInset).frame(height: model.topHeight)
     }
     private var controls: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                HStack(spacing: 3) {
+        HStack(alignment: .center, spacing: 20) {
+            cover(size: ExpandedMusicLayout.artworkSize)
+                .shadow(color: .black.opacity(0.25), radius: 7, y: 3)
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 1) {
+                    MarqueeTitle(text: media.title, fontSize: 16, lineHeight: 20)
+                    MarqueeTitle(text: media.artist, fontSize: 12, weight: .regular, lineHeight: 15)
+                        .foregroundStyle(.white.opacity(0.78))
+                    if !media.album.isEmpty {
+                        MarqueeTitle(text: media.album, fontSize: 10, weight: .regular, lineHeight: 12)
+                            .foregroundStyle(.white.opacity(0.62))
+                    }
+                }.frame(height: 48, alignment: .top)
+                Spacer(minLength: 4)
+                PlaybackProgressControl(progress: media.progress, duration: media.duration,
+                                        available: media.available, accent: accent, seek: media.seek,
+                                        showsTimes: true) { editing in
+                    model.scrubbing = editing
+                    if !editing { model.scheduleClose() }
+                }.frame(height: 30)
+                HStack(spacing: 18) {
                     Button(action: media.previous) {
-                        Image(systemName: "backward.fill").font(.system(size: 13, weight: .regular)).frame(width: 28, height: 36)
+                        Image(systemName: "backward.fill").font(.system(size: 19)).frame(width: 40, height: 44)
                     }.accessibilityLabel("上一首").help("上一首")
                     Button(action: media.toggle) {
                         Image(systemName: media.playing ? "pause.fill" : "play.fill")
-                            .font(.system(size: 19, weight: .regular))
+                            .font(.system(size: 28))
                             .contentTransition(.symbolEffect(.replace))
-                            .frame(width: 34, height: 36)
+                            .frame(width: 48, height: 44)
                     }.accessibilityLabel(media.playing ? "暂停" : "播放")
                     Button(action: media.next) {
-                        Image(systemName: "forward.fill").font(.system(size: 13, weight: .regular)).frame(width: 28, height: 36)
+                        Image(systemName: "forward.fill").font(.system(size: 19)).frame(width: 40, height: 44)
                     }.accessibilityLabel("下一首").help("下一首")
                 }
                 .buttonStyle(TransportButtonStyle(cornerRadius: NotchCorners.radius * model.topHeight / 32))
@@ -430,38 +441,22 @@ struct MusicView: View {
                 .foregroundStyle(.white.opacity(0.94))
                 .shadow(color: .black.opacity(0.55), radius: 0.8, y: 0.5)
                 .disabled(!media.available)
-                cover(size: 48)
-                    .shadow(color: .black.opacity(0.25), radius: 5, y: 2)
-                // Separate metadata lines preserve room for both long artists and album names.
-                VStack(alignment: .leading, spacing: 2) {
-                    MarqueeTitle(text: media.title)
-                    MarqueeTitle(text: media.artist, fontSize: 11, weight: .regular, lineHeight: 14)
-                        .foregroundStyle(.white.opacity(0.94))
-                    if !media.album.isEmpty {
-                        MarqueeTitle(text: media.album, fontSize: 11, weight: .regular, lineHeight: 14)
-                            .foregroundStyle(.white.opacity(0.88))
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(height: 60)
-            HStack(spacing: 8) {
-                PlaybackProgressControl(progress: media.progress, duration: media.duration,
-                                        available: media.available, accent: accent, seek: media.seek) { editing in
-                    model.scrubbing = editing
-                    if !editing { model.scheduleClose() }
-                }
+                .frame(maxWidth: .infinity)
+                Spacer(minLength: 4)
                 VolumeControl(volume: media.volume) { editing in
                     model.scrubbing = editing
                     if !editing { model.scheduleClose() }
-                }.frame(width: 90)
-
+                }.frame(height: 16)
+                Spacer(minLength: 8)
+                AudioOutputPicker(volume: media.volume, presentationChanged: model.setOutputPickerPresented,
+                                  buttonReady: { model.outputPickerButton = $0 }, showsName: true)
+                    .frame(maxWidth: .infinity).frame(height: 26)
+                    .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: NotchCorners.radius))
             }
-            .font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.9))
-            .shadow(color: .black.opacity(0.6), radius: 1, y: 1)
-            .frame(height: 16)
-            .padding(.trailing, 14)
-        }.padding(.leading, 28).padding(.trailing, 18).padding(.top, 6).padding(.bottom, 10)
+            .frame(maxWidth: .infinity).frame(height: ExpandedMusicLayout.artworkSize)
+        }
+        .padding(.horizontal, 20).padding(.vertical, 12)
+        .frame(height: ExpandedMusicLayout.contentHeight)
     }
     private func cover(size: CGFloat) -> some View {
         Group {
@@ -490,11 +485,13 @@ struct PlaybackProgressControl: View {
     var available: Bool
     var accent: Color
     var seek: (Double) -> Void
+    var showsTimes = false
     var editingChanged: (Bool) -> Void
     private var seekValue = State<Double>(initialValue: 0)
     private var scrubbing = State<Bool>(initialValue: false)
 
     var body: some View {
+        VStack(spacing: 2) {
         Slider(value: seekValue.projectedValue, in: 0...max(1, duration), onEditingChanged: { editing in
             scrubbing.wrappedValue = editing
             editingChanged(editing)
@@ -507,6 +504,18 @@ struct PlaybackProgressControl: View {
             .onChange(of: progress.position) { _, value in
                 if !scrubbing.wrappedValue { seekValue.wrappedValue = value }
             }
+        if showsTimes {
+            HStack {
+                Text(MediaService.time(scrubbing.wrappedValue ? seekValue.wrappedValue : progress.position))
+                Spacer()
+                Text("−" + MediaService.time(max(0, duration - (scrubbing.wrappedValue ? seekValue.wrappedValue : progress.position))))
+            }
+            .font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.64))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("播放时间")
+            .accessibilityValue("\(MediaService.time(progress.position))，剩余 \(MediaService.time(max(0, duration-progress.position)))")
+        }
+        }
     }
 }
 
