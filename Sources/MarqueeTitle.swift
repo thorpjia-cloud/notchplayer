@@ -41,6 +41,5 @@ struct MarqueeTitle: View {
 
     private var title: some View {
         Text(text).font(Font(font)).lineLimit(1)
-            .shadow(color: .black.opacity(0.65), radius: 0.85, y: 0.5)
     }
 }

@@ -131,7 +131,7 @@ struct AudioOutputPicker: NSViewRepresentable {
         button.isBordered = false
         button.bezelStyle = .inline
         button.imagePosition = .imageOnly
-        button.contentTintColor = .white.withAlphaComponent(0.88)
+        button.contentTintColor = .labelColor
         button.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
         button.setAccessibilityIdentifier("audio-output-picker")
         buttonReady(button)

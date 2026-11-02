@@ -99,12 +99,12 @@ struct StableBackdrop: NSViewRepresentable {
         view.blendingMode = .behindWindow
         // Keep the blur independent of which app owns keyboard focus.
         view.state = .active
-        view.appearance = NSAppearance(named: .darkAqua)
+        view.appearance = nil
         return view
     }
     func updateNSView(_ view: NSVisualEffectView, context: Context) {
         view.state = .active
-        view.appearance = NSAppearance(named: .darkAqua)
+        view.appearance = nil
         view.alphaValue = expanded ? 0.38 : 0
     }
 }
@@ -137,7 +137,7 @@ struct SiriGlassSurface: View, Animatable {
             if #available(macOS 26.0, *) {
                 // Full native optics need the active window path; masking them suppresses the actual lensing.
                 Color.clear
-                    .glassEffect(.clear.interactive(false), in: nativeLensOutline)
+                    .glassEffect(.regular.interactive(false), in: nativeLensOutline)
                     .glassEffectTransition(.identity)
                     .opacity(nativeGlassIsActive ? reveal : 0)
                     .environment(\.appearsActive, true)
@@ -177,7 +177,7 @@ struct SiriGlassSurface: View, Animatable {
         GeometryReader { geometry in
             VStack(spacing: 0) {
                 // Extend the first wash color upward without moving the established lower gradient.
-                Color.black.opacity(0.38)
+                Color.black.opacity(0)
                     .overlay(artworkTint.opacity(0.02))
                     .opacity(usesBlackHeader ? 0 : 1)
                     .frame(height: min(topHeight, geometry.size.height))
@@ -190,6 +190,7 @@ struct SiriGlassSurface: View, Animatable {
                 ], startPoint: .top, endPoint: .bottom)
                 .background {
                     // Neutral absorption controls white-background glare while leaving the native lens unmasked.
+                    if #unavailable(macOS 26.0) {
                     LinearGradient(stops: [
                         .init(color: .black.opacity(0.38), location: 0),
                         .init(color: .black.opacity(0.32), location: 0.24),
@@ -197,6 +198,7 @@ struct SiriGlassSurface: View, Animatable {
                         .init(color: .black.opacity(0.235), location: 0.80),
                         .init(color: .black.opacity(0.22), location: 1)
                     ], startPoint: .top, endPoint: .bottom)
+                    }
                 }
             }
         }
@@ -386,7 +388,6 @@ struct MusicView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea(.all)
-        .preferredColorScheme(.dark)
         .environment(\.appearsActive, true)
     }
     private var header: some View {
@@ -410,10 +411,10 @@ struct MusicView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     MarqueeTitle(text: media.title, fontSize: 15, lineHeight: 18)
                     MarqueeTitle(text: media.artist, fontSize: 11, weight: .regular, lineHeight: 14)
-                        .foregroundStyle(.white.opacity(0.78))
+                        .foregroundStyle(.secondary)
                     if !media.album.isEmpty {
                         MarqueeTitle(text: media.album, fontSize: 10, weight: .regular, lineHeight: 12)
-                            .foregroundStyle(.white.opacity(0.62))
+                            .foregroundStyle(.secondary)
                     }
                 }.frame(height: 44, alignment: .top)
                 Spacer(minLength: 1)
@@ -439,8 +440,7 @@ struct MusicView: View {
                 }
                 .buttonStyle(TransportButtonStyle(cornerRadius: NotchCorners.radius * model.topHeight / 32))
                 .symbolRenderingMode(.monochrome)
-                .foregroundStyle(.white.opacity(0.94))
-                .shadow(color: .black.opacity(0.55), radius: 0.8, y: 0.5)
+                .foregroundStyle(.primary)
                 .disabled(!media.available)
                 .frame(maxWidth: .infinity)
                 Spacer(minLength: 1)
@@ -512,7 +512,7 @@ struct PlaybackProgressControl: View {
                 Spacer()
                 Text("−" + MediaService.time(max(0, duration - (scrubbing.wrappedValue ? seekValue.wrappedValue : progress.position))))
             }
-            .font(.system(size: 9, design: .monospaced)).foregroundStyle(.white.opacity(0.64))
+            .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("播放时间")
             .accessibilityValue("\(MediaService.time(progress.position))，剩余 \(MediaService.time(max(0, duration-progress.position)))")
@@ -527,11 +527,11 @@ struct VolumeControl: View {
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: volume.value == 0 ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.7))
+                .font(.system(size: 10)).foregroundStyle(.secondary)
                 .frame(width: 14).accessibilityHidden(true)
             Slider(value: Binding(get: { volume.value }, set: { volume.set($0) }), in: 0...1,
                    onEditingChanged: editingChanged)
-                .controlSize(.mini).tint(.white.opacity(0.75))
+                .controlSize(.mini)
                 .disabled(!volume.available)
                 .accessibilityLabel("系统输出音量")
                 .accessibilityValue("\(Int((volume.value * 100).rounded()))%")
@@ -631,7 +631,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
         panel.isMovable = false; panel.hidesOnDeactivate = false; panel.isReleasedWhenClosed = false
         panel.isFloatingPanel = true; panel.becomesKeyOnlyIfNeeded = true
-        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.appearance = nil
         panel.title = "notchplayer · 音乐"
         panel.delegate = self
         let hostingView = NookHostingView(rootView: MusicView(model: model, media: media))
