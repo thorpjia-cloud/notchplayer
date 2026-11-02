@@ -16,9 +16,9 @@ struct NotchCornerContainer: ViewModifier {
 
 struct DeviceCornerBackground: View {
     @ViewBuilder var body: some View {
-        if #available(macOS 26.0, *) { ConcentricRectangle().fill(.white.opacity(0.07)) }
-        else { UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: 0,
-                                      bottomTrailingRadius: max(0, NotchCorners.expandedRadius - NotchCorners.contentInset), topTrailingRadius: 0,
+        if #available(macOS 26.0, *) { ConcentricRectangle(topLeadingCorner: .fixed(8), topTrailingCorner: .fixed(8), bottomLeadingCorner: .fixed(8), bottomTrailingCorner: .concentric).fill(.white.opacity(0.07)) }
+        else { UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 8,
+                                      bottomTrailingRadius: max(0, NotchCorners.expandedRadius - NotchCorners.contentInset), topTrailingRadius: 8,
                                       style: .continuous).fill(.white.opacity(0.07)) }
     }
 }
@@ -28,11 +28,11 @@ struct ArtworkCornerClip: ViewModifier {
     var topHeight: CGFloat
     @ViewBuilder func body(content: Content) -> some View {
         if expanded {
-            if #available(macOS 26.0, *) { content.clipShape(ConcentricRectangle()) }
+            if #available(macOS 26.0, *) { content.clipShape(ConcentricRectangle(topLeadingCorner: .fixed(12), topTrailingCorner: .fixed(12), bottomLeadingCorner: .concentric, bottomTrailingCorner: .fixed(12))) }
             else {
-                content.clipShape(UnevenRoundedRectangle(topLeadingRadius: 0,
+                content.clipShape(UnevenRoundedRectangle(topLeadingRadius: 12,
                     bottomLeadingRadius: max(0, NotchCorners.expandedRadius - NotchCorners.contentInset),
-                    bottomTrailingRadius: 0, topTrailingRadius: 0, style: .continuous))
+                    bottomTrailingRadius: 12, topTrailingRadius: 12, style: .continuous))
             }
         } else {
             // The detached compact thumbnail is an independent control, not a copy of the concave notch.
