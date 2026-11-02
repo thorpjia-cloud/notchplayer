@@ -72,6 +72,48 @@ enum SystemAudioOutput {
     }
 }
 
+// Center the symbol and the truncated name as one unit; imageLeading alone anchors
+// the image to the left edge while reserving the remaining width for the title.
+private final class CenteredOutputButtonCell: NSButtonCell {
+    private func contentRects(_ bounds: NSRect) -> (image: NSRect, title: NSRect) {
+        let icon: CGFloat = 13
+        let gap: CGFloat = title.isEmpty ? 0 : 7
+        let font = self.font ?? .systemFont(ofSize: 10, weight: .medium)
+        let textSize = (title as NSString).size(withAttributes: [.font: font])
+        let textWidth = min(ceil(textSize.width), max(0, bounds.width - 24 - icon - gap))
+        let width = icon + gap + textWidth
+        let x = bounds.midX - width / 2
+        return (NSRect(x: x, y: bounds.midY - icon / 2, width: icon, height: icon),
+                NSRect(x: x + icon + gap, y: bounds.midY - ceil(textSize.height) / 2,
+                       width: textWidth, height: ceil(textSize.height)))
+    }
+
+    override func imageRect(forBounds rect: NSRect) -> NSRect { contentRects(rect).image }
+    override func titleRect(forBounds rect: NSRect) -> NSRect { contentRects(rect).title }
+
+    override func drawInterior(withFrame frame: NSRect, in view: NSView) {
+        let rects = contentRects(frame)
+        let tint = (view as? NSButton)?.contentTintColor ?? .labelColor
+        let opacity: CGFloat = isHighlighted ? 0.55 : 1
+        if let image {
+            let symbol = image.withSymbolConfiguration(.init(paletteColors: [tint])) ?? image
+            let scale = min(rects.image.width / symbol.size.width, rects.image.height / symbol.size.height)
+            let size = NSSize(width: symbol.size.width * scale, height: symbol.size.height * scale)
+            let imageRect = NSRect(x: rects.image.midX - size.width / 2,
+                                   y: rects.image.midY - size.height / 2, width: size.width, height: size.height)
+            symbol.draw(in: imageRect, from: .zero, operation: .sourceOver,
+                        fraction: opacity, respectFlipped: true, hints: nil)
+        }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingTail
+        (title as NSString).draw(in: rects.title, withAttributes: [
+            .font: font ?? .systemFont(ofSize: 10, weight: .medium),
+            .foregroundColor: tint.withAlphaComponent(tint.alphaComponent * opacity),
+            .paragraphStyle: paragraph
+        ])
+    }
+}
+
 struct AudioOutputPicker: NSViewRepresentable {
     @ObservedObject var volume: OutputVolume
     var presentationChanged: (Bool) -> Void
@@ -83,6 +125,9 @@ struct AudioOutputPicker: NSViewRepresentable {
     func makeNSView(context: Context) -> NSButton {
         let button = NSButton(image: NSImage(systemSymbolName: "airplayaudio", accessibilityDescription: "播放设备")!,
                               target: context.coordinator, action: #selector(Coordinator.showDevices(_:)))
+        button.cell = CenteredOutputButtonCell(imageCell: NSImage(systemSymbolName: "airplayaudio", accessibilityDescription: nil))
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.showDevices(_:))
         button.isBordered = false
         button.bezelStyle = .inline
         button.imagePosition = .imageOnly
@@ -97,7 +142,7 @@ struct AudioOutputPicker: NSViewRepresentable {
     func updateNSView(_ button: NSButton, context: Context) {
         context.coordinator.volume = volume
         context.coordinator.presentationChanged = presentationChanged
-        button.title = showsName ? " " + volume.outputName : ""
+        button.title = showsName ? volume.outputName : ""
         button.imagePosition = showsName ? .imageLeading : .imageOnly
         button.font = .systemFont(ofSize: 10, weight: .medium)
         button.lineBreakMode = .byTruncatingTail
