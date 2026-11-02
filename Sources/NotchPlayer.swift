@@ -3,9 +3,9 @@ import SwiftUI
 import Combine
 
 enum ExpandedMusicLayout {
-    static let width: CGFloat = 480
-    static let contentHeight: CGFloat = 208
-    static let artworkSize: CGFloat = 184
+    static let width: CGFloat = 420
+    static let contentHeight: CGFloat = 176
+    static let artworkSize: CGFloat = 156
 }
 
 final class NookModel: ObservableObject {
@@ -402,38 +402,38 @@ struct MusicView: View {
         .padding(.horizontal, CompactNotchLayout.outerInset).frame(height: model.topHeight)
     }
     private var controls: some View {
-        HStack(alignment: .center, spacing: 20) {
+        HStack(alignment: .center, spacing: 16) {
             cover(size: ExpandedMusicLayout.artworkSize)
                 .shadow(color: .black.opacity(0.25), radius: 7, y: 3)
             VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 1) {
-                    MarqueeTitle(text: media.title, fontSize: 16, lineHeight: 20)
-                    MarqueeTitle(text: media.artist, fontSize: 12, weight: .regular, lineHeight: 15)
+                VStack(alignment: .leading, spacing: 0) {
+                    MarqueeTitle(text: media.title, fontSize: 15, lineHeight: 18)
+                    MarqueeTitle(text: media.artist, fontSize: 11, weight: .regular, lineHeight: 14)
                         .foregroundStyle(.white.opacity(0.78))
                     if !media.album.isEmpty {
                         MarqueeTitle(text: media.album, fontSize: 10, weight: .regular, lineHeight: 12)
                             .foregroundStyle(.white.opacity(0.62))
                     }
-                }.frame(height: 48, alignment: .top)
-                Spacer(minLength: 4)
+                }.frame(height: 44, alignment: .top)
+                Spacer(minLength: 2)
                 PlaybackProgressControl(progress: media.progress, duration: media.duration,
                                         available: media.available, accent: accent, seek: media.seek,
                                         showsTimes: true) { editing in
                     model.scrubbing = editing
                     if !editing { model.scheduleClose() }
-                }.frame(height: 30)
-                HStack(spacing: 18) {
+                }.frame(height: 26)
+                HStack(spacing: 14) {
                     Button(action: media.previous) {
-                        Image(systemName: "backward.fill").font(.system(size: 19)).frame(width: 40, height: 44)
+                        Image(systemName: "backward.fill").font(.system(size: 17)).frame(width: 40, height: 34)
                     }.accessibilityLabel("上一首").help("上一首")
                     Button(action: media.toggle) {
                         Image(systemName: media.playing ? "pause.fill" : "play.fill")
-                            .font(.system(size: 28))
+                            .font(.system(size: 24))
                             .contentTransition(.symbolEffect(.replace))
-                            .frame(width: 48, height: 44)
+                            .frame(width: 44, height: 34)
                     }.accessibilityLabel(media.playing ? "暂停" : "播放")
                     Button(action: media.next) {
-                        Image(systemName: "forward.fill").font(.system(size: 19)).frame(width: 40, height: 44)
+                        Image(systemName: "forward.fill").font(.system(size: 17)).frame(width: 40, height: 34)
                     }.accessibilityLabel("下一首").help("下一首")
                 }
                 .buttonStyle(TransportButtonStyle(cornerRadius: NotchCorners.radius * model.topHeight / 32))
@@ -442,20 +442,20 @@ struct MusicView: View {
                 .shadow(color: .black.opacity(0.55), radius: 0.8, y: 0.5)
                 .disabled(!media.available)
                 .frame(maxWidth: .infinity)
-                Spacer(minLength: 4)
+                Spacer(minLength: 2)
                 VolumeControl(volume: media.volume) { editing in
                     model.scrubbing = editing
                     if !editing { model.scheduleClose() }
                 }.frame(height: 16)
-                Spacer(minLength: 8)
+                Spacer(minLength: 4)
                 AudioOutputPicker(volume: media.volume, presentationChanged: model.setOutputPickerPresented,
                                   buttonReady: { model.outputPickerButton = $0 }, showsName: true)
-                    .frame(maxWidth: .infinity).frame(height: 26)
+                    .frame(maxWidth: .infinity).frame(height: 24)
                     .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: NotchCorners.radius))
             }
             .frame(maxWidth: .infinity).frame(height: ExpandedMusicLayout.artworkSize)
         }
-        .padding(.horizontal, 20).padding(.vertical, 12)
+        .padding(.horizontal, 16).padding(.vertical, 10)
         .frame(height: ExpandedMusicLayout.contentHeight)
     }
     private func cover(size: CGFloat) -> some View {
