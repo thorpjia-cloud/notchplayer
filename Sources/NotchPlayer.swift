@@ -109,6 +109,54 @@ struct StableBackdrop: NSViewRepresentable {
     }
 }
 
+// Keep the native backdrop live: fade its material through AppKit's own maskImage,
+// rather than rasterizing the representable with a SwiftUI mask or fading its entire output.
+final class FadingControlEffectView: NSVisualEffectView {
+    private var maskSize: NSSize = .zero
+    override func layout() {
+        super.layout()
+        guard bounds.size != maskSize, bounds.width > 0, bounds.height > 0 else { return }
+        maskSize = bounds.size
+        let count = 128
+        let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: count, pixelsHigh: count,
+                                      bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                      isPlanar: false, colorSpaceName: .deviceRGB,
+                                      bytesPerRow: 0, bitsPerPixel: 0)!
+        func smooth(_ value: Double) -> Double {
+            let t = min(1, max(0, value))
+            return t * t * (3 - 2 * t)
+        }
+        for y in 0..<count {
+            let v = Double(y) / Double(count - 1)
+            for x in 0..<count {
+                let u = Double(x) / Double(count - 1)
+                let alpha = smooth(min(u, 1-u) / 0.20) * smooth(min(v, 1-v) / 0.24)
+                let offset = y * bitmap.bytesPerRow + x * 4
+                let data = bitmap.bitmapData!
+                data[offset] = 255; data[offset+1] = 255; data[offset+2] = 255
+                data[offset+3] = UInt8((alpha * 255).rounded())
+            }
+        }
+        let image = NSImage(size: bounds.size)
+        image.addRepresentation(bitmap)
+        maskImage = image
+    }
+}
+
+struct ControlReadabilityBackdrop: NSViewRepresentable {
+    func makeNSView(context: Context) -> FadingControlEffectView {
+        let view = FadingControlEffectView()
+        view.material = .hudWindow
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.appearance = nil
+        return view
+    }
+    func updateNSView(_ view: FadingControlEffectView, context: Context) {
+        view.state = .active
+    }
+}
+
 // Derive light timing from the same reversible progress as the expanding geometry.
 private func glassReveal(_ progress: CGFloat, from start: CGFloat, to end: CGFloat) -> Double {
     let t = min(1, max(0, (progress - start) / (end - start)))
@@ -137,7 +185,7 @@ struct SiriGlassSurface: View, Animatable {
             if #available(macOS 26.0, *) {
                 // Full native optics need the active window path; masking them suppresses the actual lensing.
                 Color.clear
-                    .glassEffect(.regular.interactive(false), in: nativeLensOutline)
+                    .glassEffect(.clear.interactive(false), in: nativeLensOutline)
                     .glassEffectTransition(.identity)
                     .opacity(nativeGlassIsActive ? reveal : 0)
                     .environment(\.appearsActive, true)
@@ -457,6 +505,14 @@ struct MusicView: View {
                     .padding(.bottom, NotchCorners.contentInset)
             }
             .frame(maxWidth: .infinity).frame(height: ExpandedMusicLayout.artworkSize)
+            .background {
+                // The ordinary backdrop fades natively; leave the Clear lens and outer rim untouched.
+                ControlReadabilityBackdrop()
+                    .padding(.horizontal, -20)
+                    .padding(.vertical, -34)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
         }
         .padding(.horizontal, NotchCorners.topRadius * model.topHeight / 32 + NotchCorners.contentInset)
         .padding(.vertical, NotchCorners.contentInset)
