@@ -416,25 +416,25 @@ struct MusicView: View {
                             .foregroundStyle(.white.opacity(0.62))
                     }
                 }.frame(height: 44, alignment: .top)
-                Spacer(minLength: 2)
+                Spacer(minLength: 1)
                 PlaybackProgressControl(progress: media.progress, duration: media.duration,
                                         available: media.available, accent: accent, seek: media.seek,
                                         showsTimes: true) { editing in
                     model.scrubbing = editing
                     if !editing { model.scheduleClose() }
-                }.frame(height: 26)
+                }.frame(height: 24)
                 HStack(spacing: 14) {
                     Button(action: media.previous) {
-                        Image(systemName: "backward.fill").font(.system(size: 17)).frame(width: 40, height: 34)
+                        Image(systemName: "backward.fill").font(.system(size: 17)).frame(width: 40, height: 30)
                     }.accessibilityLabel("上一首").help("上一首")
                     Button(action: media.toggle) {
                         Image(systemName: media.playing ? "pause.fill" : "play.fill")
                             .font(.system(size: 24))
                             .contentTransition(.symbolEffect(.replace))
-                            .frame(width: 44, height: 34)
+                            .frame(width: 44, height: 30)
                     }.accessibilityLabel(media.playing ? "暂停" : "播放")
                     Button(action: media.next) {
-                        Image(systemName: "forward.fill").font(.system(size: 17)).frame(width: 40, height: 34)
+                        Image(systemName: "forward.fill").font(.system(size: 17)).frame(width: 40, height: 30)
                     }.accessibilityLabel("下一首").help("下一首")
                 }
                 .buttonStyle(TransportButtonStyle(cornerRadius: NotchCorners.radius * model.topHeight / 32))
@@ -443,16 +443,18 @@ struct MusicView: View {
                 .shadow(color: .black.opacity(0.55), radius: 0.8, y: 0.5)
                 .disabled(!media.available)
                 .frame(maxWidth: .infinity)
-                Spacer(minLength: 2)
+                Spacer(minLength: 1)
                 VolumeControl(volume: media.volume) { editing in
                     model.scrubbing = editing
                     if !editing { model.scheduleClose() }
                 }.frame(height: 16)
-                Spacer(minLength: 4)
+                Spacer(minLength: 1)
                 AudioOutputPicker(volume: media.volume, presentationChanged: model.setOutputPickerPresented,
                                   buttonReady: { model.outputPickerButton = $0 }, showsName: true)
-                    .frame(maxWidth: .infinity).frame(height: 24)
+                    .frame(maxWidth: .infinity).frame(height: 28)
                     .background { DeviceCornerBackground() }
+                    .padding(.trailing, NotchCorners.contentInset)
+                    .padding(.bottom, NotchCorners.contentInset)
             }
             .frame(maxWidth: .infinity).frame(height: ExpandedMusicLayout.artworkSize)
         }

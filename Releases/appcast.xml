@@ -6,6 +6,53 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>notchplayer</title>
         <item>
+            <title>0.2.83</title>
+            <pubDate>Mon, 02 Nov 2026 13:16:25 +0800</pubDate>
+            <sparkle:version>83</sparkle:version>
+            <sparkle:shortVersionString>0.2.83</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[把音乐放在 Mac 顶部：专辑封面、播放控制、实时波形与原生液态玻璃。
+
+## 下载
+
+**[下载 macOS 安装包（DMG）](https://github.com/thorpjia-cloud/notchplayer/releases/download/v0.2.83/notchplayer-0.2.83-macOS-universal.dmg)** · [ZIP 备用下载](https://github.com/thorpjia-cloud/notchplayer/releases/download/v0.2.83/notchplayer-0.2.83-macOS-universal.zip)
+
+Apple Silicon / Intel 通用包，macOS 14+。实时波形需要 macOS 14.2+，原生 Liquid Glass 需要 macOS 26+。
+
+## 安装
+
+1. 打开 DMG，将 **notchplayer.app** 拖入 **Applications（应用程序）**。
+2. 从“应用程序”启动 notchplayer，然后在常用播放器中播放音乐。
+
+> **首次使用注意：** 免费包未经过苹果公证，首次可能需要按 [Apple 官方步骤](https://support.apple.com/102445) 点击“仍要打开”，并允许系统音频录制，以显示实时波形。
+
+## 使用
+
+- **自动出现：** 播放歌曲后，封面和波形从刘海两侧浮现；暂停、切歌和后台播放时保留，退出当前播放器后隐藏。
+- **展开面板：** 鼠标移入顶部刘海区域后点击；移开鼠标后自动收起。
+- **控制音乐：** 切歌、播放或暂停、拖动进度、调节音量。
+- **选择设备：** 展开后点击右侧底部的设备名称，在 Mac 扬声器与已连接蓝牙耳机之间切换；勾选标记表示当前输出。
+- **右键菜单：** 设置、检查更新、使用说明、重新连接播放器、退出 notchplayer。
+
+**网易云音乐用户：** 请在“设置 → 常规 → 播放歌曲时”勾选 **“启用系统歌曲播放通知栏”**，即可显示歌曲信息。
+
+## 本次更新
+
+- 封面和设备按钮分别四角统一，使用连续圆角路径，并保持与邻近外框底角的同心关系。
+- 封面保持外框 10 pt 边距（约 18 pt 圆角）；设备按钮右边与底边改为 20 pt 边距（约 8 pt 圆角），按钮高 28 pt，保留直边，避免胶囊形。
+- 保持 420 pt 宽、176 pt 内容高及 156 pt 封面；收紧右栏局部间距，保留纵向层级与高清逻辑。
+
+0.2.67 及更新版本可在应用内点击“检查更新”，下载完成后选择“重启并更新”。0.2.66 及更早版本需要手动安装一次新版。
+
+## 灵感与致谢
+
+交互灵感来自 [NotchNook](https://lo.cafe/notchnook) 与 Apple 灵动岛（Dynamic Island）；通过 [REA](https://github.com/morluto/rea) 辅助研究与实现，界面使用 Apple 原生 Liquid Glass。
+
+感谢 [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) 作者 Jonas van den Berg。更多说明见 [致谢与许可证](https://github.com/thorpjia-cloud/notchplayer/blob/main/NOTICE.md)。
+]]></description>
+            <enclosure url="https://github.com/thorpjia-cloud/notchplayer/releases/download/v0.2.83/notchplayer-0.2.83-macOS-universal.zip" length="7344516" type="application/octet-stream" sparkle:edSignature="zz5xtiEho4a71g3qOFc3lp965KjqgPHr47bYasvNZ+5dACqrPzdHcn2d/IMaLuS5wEYsGTge3/i8Jbxb7TG1Aw=="/>
+        </item>
+        <item>
             <title>0.2.82</title>
             <pubDate>Mon, 02 Nov 2026 12:59:44 +0800</pubDate>
             <sparkle:version>82</sparkle:version>
@@ -720,6 +767,6 @@ Apple Silicon / Intel 通用包，macOS 14+。实时波形需要 macOS 14.2+，�
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: Mv0kGQ6B3IdHye57YZda4e55m59n+QoC25bE+XY2CNWnrkbYUcQ3apDG4fmzsB9XiiiXNd1uFTCJB9XmDel9Aw==
-length: 52439
+edSignature: 28cwV4dgXrGrM5qTUwg4JdpAiRUZhAJWrwqUSCU/7ckEMWNYV1/v2NK8Bd/wTudBVn6kY7mqiVv/qqNHTyhfAw==
+length: 55876
 -->
