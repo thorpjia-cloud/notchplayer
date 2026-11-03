@@ -18,7 +18,7 @@ final class NookModel: ObservableObject {
     }
     var expansionChanged: (() -> Void)?
     @Published var nativeGlassIsActive = false
-    @Published var usesBlackHeader = true
+    @Published var usesBlackHeader = false
     @Published var pinned = false
     @Published var hovering = false
     @Published var scrubbing = false
@@ -505,14 +505,6 @@ struct MusicView: View {
                     .padding(.bottom, NotchCorners.contentInset)
             }
             .frame(maxWidth: .infinity).frame(height: ExpandedMusicLayout.artworkSize)
-            .background {
-                // The ordinary backdrop fades natively; leave the Clear lens and outer rim untouched.
-                ControlReadabilityBackdrop()
-                    .padding(.horizontal, -20)
-                    .padding(.vertical, -34)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
         }
         .padding(.horizontal, NotchCorners.topRadius * model.topHeight / 32 + NotchCorners.contentInset)
         .padding(.vertical, NotchCorners.contentInset)

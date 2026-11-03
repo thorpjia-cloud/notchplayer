@@ -11,13 +11,17 @@ enum MenuBarStyle: String, CaseIterable, Identifiable {
         case .glass: return "统一玻璃"
         }
     }
+    func usesBlackHeader(menuBarIsDark: Bool, wallpaperIsDark: Bool?) -> Bool {
+        self == .black || (self == .automatic && menuBarIsDark && wallpaperIsDark == true)
+    }
+
 }
 
 @MainActor
 final class MenuBarAppearance: ObservableObject {
     @Published private(set) var style: MenuBarStyle
-    @Published private(set) var usesBlackHeader = true
-    private var menuBarIsDark = true
+    @Published private(set) var usesBlackHeader = false
+    private var menuBarIsDark = false
     private var wallpaperIsDark: Bool?
     private var wallpaperInput: WallpaperToneInput?
     private var wallpaperTask: Task<Void, Never>?
@@ -33,7 +37,8 @@ final class MenuBarAppearance: ObservableObject {
 
     var detail: String {
         if style == .automatic {
-            return usesBlackHeader ? "当前：深色菜单栏，保留黑色渐变。" : "当前：浅色菜单栏，顶部与面板使用连续玻璃。"
+            if wallpaperIsDark == nil { return "当前：未取得可靠的菜单栏背景信息，使用连续玻璃。" }
+            return usesBlackHeader ? "当前：顶部接近黑色，保留黑色渐变。" : "当前：顶部未满足近黑色条件，使用连续玻璃。"
         }
         return usesBlackHeader ? "展开后菜单栏区域纯黑，向下过渡到玻璃。" : "展开后顶部与下方共用透明玻璃和专辑染色。"
     }
@@ -54,33 +59,29 @@ final class MenuBarAppearance: ObservableObject {
     }
 
     func refresh() {
-        guard let appearance = statusItem?.button?.effectiveAppearance,
-              let match = appearance.bestMatch(from: [.aqua, .darkAqua]) else { return }
+        let match = statusItem?.button?.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])
         menuBarIsDark = match == .darkAqua
         refreshWallpaper()
         resolveStyle()
     }
 
     private func refreshWallpaper() {
-        guard style == .automatic else { return }
-        guard let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main,
-              let url = NSWorkspace.shared.desktopImageURL(for: screen) else {
+        guard style == .automatic,
+              let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main,
+              let url = NSWorkspace.shared.desktopImageURL(for: screen),
+              let options = NSWorkspace.shared.desktopImageOptions(for: screen),
+              let input = WallpaperTone.input(url: url, screenSize: screen.frame.size,
+                                              menuHeight: max(NSStatusBar.system.thickness, screen.safeAreaInsets.top),
+                                              options: options) else {
             wallpaperTask?.cancel()
+            wallpaperTask = nil
             wallpaperInput = nil
             wallpaperIsDark = nil
             return
         }
-        let options = NSWorkspace.shared.desktopImageOptions(for: screen) ?? [:]
-        let fill = (options[.fillColor] as? NSColor)?.usingColorSpace(.sRGB) ?? NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 1)
-        let input = WallpaperToneInput(url: url,
-                                       modified: try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                                       screenSize: screen.frame.size,
-                                       menuHeight: max(NSStatusBar.system.thickness, screen.safeAreaInsets.top),
-                                       scaling: (options[.imageScaling] as? NSNumber)?.uintValue ?? NSImageScaling.scaleProportionallyUpOrDown.rawValue,
-                                       clips: (options[.allowClipping] as? Bool) ?? false,
-                                       fill: [fill.redComponent, fill.greenComponent, fill.blueComponent])
         guard input != wallpaperInput else { return }
         wallpaperInput = input
+        wallpaperIsDark = nil
         wallpaperTask?.cancel()
         wallpaperTask = Task { [weak self] in
             let brightness = await Task.detached(priority: .utility) { WallpaperTone.brightness(input) }.value
@@ -100,8 +101,7 @@ final class MenuBarAppearance: ObservableObject {
     }
 
     private func resolveStyle() {
-        let darkBackground = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? true : wallpaperIsDark ?? true
-        let black = style == .black || (style == .automatic && menuBarIsDark && darkBackground)
+        let black = style.usesBlackHeader(menuBarIsDark: menuBarIsDark, wallpaperIsDark: wallpaperIsDark)
         if usesBlackHeader != black { usesBlackHeader = black }
     }
 

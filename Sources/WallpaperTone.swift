@@ -12,13 +12,32 @@ struct WallpaperToneInput: Equatable, Sendable {
 }
 
 enum WallpaperTone {
+    static func input(url: URL, screenSize: CGSize, menuHeight: CGFloat,
+                      options: [NSWorkspace.DesktopImageOptionKey: Any]) -> WallpaperToneInput? {
+        // A system default image is not reliable evidence of the currently displayed wallpaper.
+        guard url.isFileURL,
+              url.path != "/System/Library/CoreServices/DefaultDesktop.heic",
+              !url.resolvingSymlinksInPath().path.hasPrefix("/System/Library/Wallpapers/.default/"),
+              let scaling = (options[.imageScaling] as? NSNumber)?.uintValue,
+              scaling == NSImageScaling.scaleAxesIndependently.rawValue ||
+                scaling == NSImageScaling.scaleProportionallyUpOrDown.rawValue else { return nil }
+        let clips = options[.allowClipping] as? Bool
+        guard scaling == NSImageScaling.scaleAxesIndependently.rawValue || clips != nil else { return nil }
+        let fill = (options[.fillColor] as? NSColor)?.usingColorSpace(.sRGB)
+            ?? NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 1)
+        return WallpaperToneInput(url: url,
+                                  modified: try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                                  screenSize: screenSize, menuHeight: menuHeight, scaling: scaling,
+                                  clips: clips ?? false, fill: [fill.redComponent, fill.greenComponent, fill.blueComponent])
+    }
+
     static func isDark(brightness: Double, previous: Bool?) -> Bool {
         // Hysteresis keeps nearby wallpaper tones from toggling the header at every opening.
-        brightness < (previous == true ? 0.30 : previous == false ? 0.22 : 0.26)
+        brightness.isFinite && brightness < (previous == true ? 0.14 : previous == false ? 0.10 : 0.12)
     }
 
     static func brightness(_ input: WallpaperToneInput) -> Double? {
-        // Non-scaling wallpaper modes lack reliable point sizing; retain the native appearance fallback.
+        // Unsupported display modes supply no evidence; callers must keep continuous glass.
         guard input.scaling == NSImageScaling.scaleAxesIndependently.rawValue ||
                 input.scaling == NSImageScaling.scaleProportionallyUpOrDown.rawValue else { return nil }
         guard input.url.isFileURL, input.screenSize.width > 0, input.screenSize.height > 0,
@@ -47,11 +66,14 @@ enum WallpaperTone {
                 imageRect = CGRect(x: (CGFloat(width) - size.width) / 2, y: (CGFloat(height) - size.height) / 2,
                                    width: size.width, height: size.height)
             }
-            context.interpolationQuality = .medium
-            context.draw(image, in: imageRect)
             // Sample only the wallpaper behind the central menu-bar region, never capture screen contents.
             let halfSpan = max(1, min(width / 2, Int(260 / input.screenSize.width * CGFloat(width))))
             let rows = max(1, min(height, Int(ceil(input.menuHeight / input.screenSize.height * CGFloat(height)))))
+            let sampleRect = CGRect(x: width / 2 - halfSpan, y: 0, width: halfSpan * 2, height: rows)
+            // Never classify synthetic letterbox fill as a black wallpaper top.
+            guard imageRect.contains(sampleRect) else { return nil }
+            context.interpolationQuality = .medium
+            context.draw(image, in: imageRect)
             let data = bytes.bindMemory(to: UInt8.self)
             var sum = 0.0
             var count = 0

@@ -36,10 +36,29 @@ import ImageIO
         precondition(sample(fixture(top: 255, bottom: 0, name: "light-top"))! > 0.95)
         precondition(WallpaperTone.isDark(brightness: 0.1, previous: nil))
         precondition(!WallpaperTone.isDark(brightness: 0.5, previous: nil))
-        precondition(WallpaperTone.isDark(brightness: 0.25, previous: true))
-        precondition(!WallpaperTone.isDark(brightness: 0.25, previous: false))
+        precondition(WallpaperTone.isDark(brightness: 0.13, previous: true))
+        precondition(!WallpaperTone.isDark(brightness: 0.11, previous: false))
         precondition(sample(folder.appendingPathComponent("missing.png")) == nil)
-        print("Wallpaper top-row selection, dark/light classification, hysteresis and missing-file fallback passed")
+        precondition(!WallpaperTone.isDark(brightness: 0.25, previous: nil))
+        let light = fixture(top: 255, bottom: 255, name: "letterbox")
+        precondition(WallpaperTone.brightness(.init(url: light, modified: nil,
+            screenSize: CGSize(width: 800, height: 1200), menuHeight: 30,
+            scaling: NSImageScaling.scaleProportionallyUpOrDown.rawValue,
+            clips: false, fill: [0, 0, 0])) == nil)
+        precondition(WallpaperTone.input(url: light, screenSize: CGSize(width: 800, height: 600),
+            menuHeight: 30, options: [:]) == nil)
+        precondition(WallpaperTone.input(url: URL(fileURLWithPath: "/System/Library/CoreServices/DefaultDesktop.heic"),
+            screenSize: CGSize(width: 800, height: 600), menuHeight: 30,
+            options: [.imageScaling: NSNumber(value: NSImageScaling.scaleAxesIndependently.rawValue)]) == nil)
+        precondition(WallpaperTone.input(url: light, screenSize: CGSize(width: 800, height: 600),
+            menuHeight: 30, options: [.imageScaling: NSNumber(value: NSImageScaling.scaleAxesIndependently.rawValue)]) != nil)
+        precondition(!MenuBarStyle.automatic.usesBlackHeader(menuBarIsDark: true, wallpaperIsDark: nil))
+        precondition(!MenuBarStyle.automatic.usesBlackHeader(menuBarIsDark: true, wallpaperIsDark: false))
+        precondition(!MenuBarStyle.automatic.usesBlackHeader(menuBarIsDark: false, wallpaperIsDark: true))
+        precondition(MenuBarStyle.automatic.usesBlackHeader(menuBarIsDark: true, wallpaperIsDark: true))
+        precondition(MenuBarStyle.black.usesBlackHeader(menuBarIsDark: false, wallpaperIsDark: nil))
+        precondition(!MenuBarStyle.glass.usesBlackHeader(menuBarIsDark: true, wallpaperIsDark: true))
+        print("Wallpaper top selection, near-black thresholds, missing/default evidence, letterbox rejection and menu style decisions passed")
         if CommandLine.arguments.count > 1, let value = sample(URL(fileURLWithPath: CommandLine.arguments[1])) {
             print("Supplied wallpaper brightness: \(value), dark: \(WallpaperTone.isDark(brightness: value, previous: nil))")
         }
