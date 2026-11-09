@@ -2,17 +2,10 @@ import AppKit
 import SwiftUI
 import Combine
 
-enum ExpandedMusicLayout {
-    static let width: CGFloat = 420
-    static let contentHeight: CGFloat = NotchCorners.expandedContentHeight
-    static let artworkSize: CGFloat = 156
-}
-
 final class NookModel: ObservableObject {
     @Published var musicVisible = false
     @Published var acceptsInteraction = false
-    @Published var hardwareNotchWidth: CGFloat = 164
-    @Published var hardwareNotchLeadingOffset: CGFloat = -82
+    @Published var layout = NotchLayout()
     @Published var expanded = false {
         didSet { if oldValue != expanded { expansionChanged?() } }
     }
@@ -26,8 +19,6 @@ final class NookModel: ObservableObject {
     weak var outputPickerButton: NSButton?
     @Published var dragX: CGFloat = 0
     @Published var dragY: CGFloat = 0
-    @Published var closedWidth: CGFloat = CompactNotchLayout.width(notchWidth: 164)
-    @Published var topHeight: CGFloat = 32
     var requestClose: (() -> Void)?
     var showSettings: (() -> Void)?
     var checkForUpdates: (() -> Void)?
@@ -43,13 +34,11 @@ final class NookModel: ObservableObject {
             : .spring(response: 0.42, dampingFraction: 0.94, blendDuration: 0)
     }
     let resetSpring = Animation.spring(response: 0.5, dampingFraction: 1, blendDuration: 0)
-    // Hover is a preview state; only a click opens the music controls.
-    var width: CGFloat { expanded ? ExpandedMusicLayout.width : closedWidth + (hovering ? 12 : 0) }
-    var height: CGFloat { expanded ? topHeight + ExpandedMusicLayout.contentHeight : topHeight }
     var hoverFeedback: () -> Void = {
         NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
     }
     private var lastFeedback = Date.distantPast
+    // Hover previews the compact panel; opening requires a separate action.
     func open() {
         guard musicVisible && acceptsInteraction else { return }
         closeWork?.cancel(); withAnimation(spring) { expanded = true }
@@ -331,27 +320,24 @@ struct NotchMorph: AnimatableModifier {
     var artworkTint: Color
     var progress: CGFloat
     var presence: CGFloat
-    var notchWidth: CGFloat
-    var closedWidth: CGFloat
-    var closedHeight: CGFloat
-    var topHeight: CGFloat
+    var layout: NotchLayout
+    var closedSize: CGSize
     var dragX: CGFloat
     var dragY: CGFloat
     var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
-        get { .init(.init(progress, presence), .init(closedWidth, closedHeight)) }
+        get { .init(.init(progress, presence), .init(closedSize.width, closedSize.height)) }
         set {
             progress = newValue.first.first; presence = newValue.first.second
-            closedWidth = newValue.second.first; closedHeight = newValue.second.second
+            closedSize = CGSize(width: newValue.second.first, height: newValue.second.second)
         }
     }
     func body(content: Content) -> some View {
-        let size = GlassMotion.size(progress: progress,
-                                    closed: CGSize(width: closedWidth, height: closedHeight),
-                                    open: CGSize(width: ExpandedMusicLayout.width, height: topHeight + ExpandedMusicLayout.contentHeight))
+        let topHeight = layout.topHeight
+        let size = GlassMotion.size(progress: progress, closed: closedSize, open: layout.expandedSize)
         let tension = reduceMotion ? 0 : GlassMotion.presenceTension(progress: presence) * (1 - min(1, max(0, progress)))
         let outline = NotchOutline(compactHeight: topHeight, compactTension: tension)
         content
-            .frame(width: (reduceMotion ? size.width : GlassMotion.presenceWidth(progress: presence, notchWidth: notchWidth, visibleWidth: size.width)) + abs(dragX) * 0.1,
+            .frame(width: (reduceMotion ? size.width : GlassMotion.presenceWidth(progress: presence, notchWidth: layout.hardwareWidth, visibleWidth: size.width)) + abs(dragX) * 0.1,
                    height: size.height + dragY * 0.12, alignment: .top)
             .modifier(NotchCornerContainer(topHeight: topHeight, height: size.height))
             .clipShape(outline)
@@ -404,12 +390,10 @@ struct MusicView: View {
             .modifier(NotchMorph(nativeGlassIsActive: model.nativeGlassIsActive, usesBlackHeader: model.usesBlackHeader, artworkTint: glassTint,
                                  progress: model.expanded ? 1 : 0,
                                  presence: model.musicVisible ? 1 : 0,
-                                 notchWidth: model.hardwareNotchWidth,
-                                 closedWidth: model.closedWidth + (model.hovering ? 12 : 0),
-                                 closedHeight: model.topHeight,
-                                 topHeight: model.topHeight, dragX: model.dragX, dragY: model.dragY))
+                                 layout: model.layout, closedSize: model.layout.compactSize(hovering: model.hovering),
+                                 dragX: model.dragX, dragY: model.dragY))
             .offset(x: model.dragX * 0.12)
-            .contentShape(NotchOutline(compactHeight: model.topHeight))
+            .contentShape(NotchOutline(compactHeight: model.layout.topHeight))
             .contextMenu {
                 Button("设置…") { model.showSettings?() }
                 Button("检查更新…") { model.checkForUpdates?() }
@@ -424,7 +408,7 @@ struct MusicView: View {
             .overlay {
                 if !model.expanded {
                     Button { model.open() } label: {
-                        Color.clear.contentShape(NotchOutline(compactHeight: model.topHeight))
+                        Color.clear.contentShape(NotchOutline(compactHeight: model.layout.topHeight))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("展开音乐播放器")
@@ -441,7 +425,7 @@ struct MusicView: View {
     private var header: some View {
         HStack {
             if !model.expanded {
-                cover(size: min(CompactNotchLayout.artworkSize, model.topHeight - 8)).accessibilityLabel("展开音乐播放器")
+                cover(size: model.layout.compactArtworkSize).accessibilityLabel("展开音乐播放器")
                     .modifier(CompactWingReveal(progress: model.musicVisible ? 1 : 0, inwardOffset: 12))
                 Spacer(minLength: 0)
                 bars.frame(width: 20, height: 16).accessibilityLabel(media.playing ? "正在播放" : "播放已暂停")
@@ -449,11 +433,11 @@ struct MusicView: View {
             }
         }
         // Keep the hardware notch area clear while the music controls sit below it.
-        .padding(.horizontal, CompactNotchLayout.outerInset).frame(height: model.topHeight)
+        .padding(.horizontal, NotchLayout.compactOuterInset).frame(height: model.layout.topHeight)
     }
     private var controls: some View {
         HStack(alignment: .center, spacing: 16) {
-            cover(size: ExpandedMusicLayout.artworkSize)
+            cover(size: NotchLayout.expandedArtworkSize)
                 .shadow(color: .black.opacity(0.25), radius: 7, y: 3)
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -486,7 +470,7 @@ struct MusicView: View {
                         Image(systemName: "forward.fill").font(.system(size: 17)).frame(width: 40, height: 30)
                     }.accessibilityLabel("下一首").help("下一首")
                 }
-                .buttonStyle(TransportButtonStyle(cornerRadius: NotchCorners.radius * model.topHeight / 32))
+                .buttonStyle(TransportButtonStyle(cornerRadius: NotchCorners.radius * model.layout.topHeight / 32))
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(.primary)
                 .disabled(!media.available)
@@ -504,11 +488,11 @@ struct MusicView: View {
                     .padding(.trailing, NotchCorners.contentInset)
                     .padding(.bottom, NotchCorners.contentInset)
             }
-            .frame(maxWidth: .infinity).frame(height: ExpandedMusicLayout.artworkSize)
+            .frame(maxWidth: .infinity).frame(height: NotchLayout.expandedArtworkSize)
         }
-        .padding(.horizontal, NotchCorners.topRadius * model.topHeight / 32 + NotchCorners.contentInset)
+        .padding(.horizontal, NotchCorners.topRadius * model.layout.topHeight / 32 + NotchCorners.contentInset)
         .padding(.vertical, NotchCorners.contentInset)
-        .frame(height: ExpandedMusicLayout.contentHeight)
+        .frame(height: NotchLayout.expandedContentHeight)
     }
     private func cover(size: CGFloat) -> some View {
         Group {
@@ -520,7 +504,7 @@ struct MusicView: View {
                 }
             }
         }.frame(width: size, height: size)
-            .modifier(ArtworkCornerClip(expanded: model.expanded, size: size, topHeight: model.topHeight))
+            .modifier(ArtworkCornerClip(expanded: model.expanded, size: size, topHeight: model.layout.topHeight))
     }
     private var bars: some View {
         SpectrumBars(spectrum: media.spectrum,
@@ -842,27 +826,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let screen = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main else { return }
         let menuBarInset = screen.frame.maxY - screen.visibleFrame.maxY
         let reservedTop = screen.safeAreaInsets.top > 0 ? screen.safeAreaInsets.top : NSStatusBar.system.thickness
-        // Hover may widen the notch, but its resting and hovered heights must fit the menu bar.
-        model.topHeight = menuBarInset > 0 ? min(reservedTop, menuBarInset) : reservedTop
-        var notchWidth: CGFloat = 164
-        var notchLeadingOffset: CGFloat = -notchWidth / 2
-        if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
-            notchWidth = max(130, right.minX - left.maxX)
-            notchLeadingOffset = left.maxX - screen.frame.midX
+        let notchGap = screen.auxiliaryTopLeftArea.flatMap { left in
+            screen.auxiliaryTopRightArea.map { $0.minX - left.maxX }
         }
-        model.hardwareNotchWidth = notchWidth
-        model.hardwareNotchLeadingOffset = notchLeadingOffset
-        model.closedWidth = CompactNotchLayout.width(notchWidth: notchWidth)
-        panel.setFrame(NSRect(x: screen.frame.midX - 330, y: screen.frame.maxY - 320, width: 660, height: 320), display: true)
+        let layout = NotchLayout(reservedTop: reservedTop, menuBarInset: menuBarInset, notchGap: notchGap)
+        if model.layout != layout { model.layout = layout }
+        panel.setFrame(NotchLayout.panelFrame(on: screen.frame), display: true)
         // Record geometry only so the physical top-edge invariant can be checked.
-        let line = "screen=\(screen.frame) visible=\(screen.visibleFrame) panel=\(panel.frame) safeTop=\(screen.safeAreaInsets.top) menuBarInset=\(menuBarInset) compactHeight=\(model.topHeight)\n"
+        let line = "screen=\(screen.frame) visible=\(screen.visibleFrame) panel=\(panel.frame) safeTop=\(screen.safeAreaInsets.top) menuBarInset=\(menuBarInset) compactHeight=\(model.layout.topHeight)\n"
         try? line.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("nooklab-geometry.txt"), atomically: true, encoding: .utf8)
     }
     var interactionRect: NSRect {
-        let inset: CGFloat = model.expanded ? 14 : 6 * model.topHeight / 32
-        return NSRect(x: panel.frame.midX - model.width / 2 + inset,
-               y: panel.frame.maxY - model.height,
-               width: model.width - 2 * inset, height: model.height)
+        model.layout.interactionRect(in: panel.frame, expanded: model.expanded, hovering: model.hovering)
     }
     private func openOutputPicker(at screenPoint: NSPoint) -> Bool {
         guard model.acceptsInteraction, model.expanded, !model.outputPickerPresented,

@@ -31,7 +31,7 @@ final class DelayedArtwork: URLProtocol {
         defer {try? FileManager.default.removeItem(at:dbURL)}
         var db: OpaquePointer?;sqlite3_open(dbURL.path,&db)
         sqlite3_exec(db,"CREATE TABLE dbTrack(jsonStr TEXT);",nil,nil,nil)
-        for title in ["red","blue","redAgain"] {
+        for title in ["red","blue","redAgain","redPending"] {
             let v:[String:Any]=["name":title,"id":title,"duration":100000,"artists":[["name":"artist"]],"album":["name":"album","picUrl":"https://p4.music.126.net/"+title+".png"]]
             let json=String(data:try JSONSerialization.data(withJSONObject:v),encoding:.utf8)!
             var stmt:OpaquePointer?;sqlite3_prepare_v2(db,"INSERT INTO dbTrack VALUES (?)",-1,&stmt,nil)
@@ -60,8 +60,44 @@ final class DelayedArtwork: URLProtocol {
         try await Task.sleep(nanoseconds:450000000)
         precondition(service.title=="redAgain" && (service.artwork?.representations.map { $0.pixelsWide }.max() ?? 0)>=312,
                      "Same-thumbnail album handoff must restart the pending high-resolution request")
+        var pause = payload("redAgain")
+        pause["artworkData"] = nil
+        pause["artist"] = nil
+        pause["album"] = nil
+        service.apply(pause)
+        precondition((service.artwork?.representations.map { $0.pixelsWide }.max() ?? 0) >= 312,
+                     "Sparse pause keeps the displayed high-resolution cover")
+
+        // Replay the observed pause sequence with anonymized metadata. The track identity
+        // changes while paused, then the matching artwork follows roughly 110 ms later.
+        service.apply(payload("redPending"))
+        try await Task.sleep(nanoseconds:80000000)
+        var next = payload("blue")
+        next["artworkData"] = nil
+        service.apply(next)
+        precondition(service.title == "blue" && service.artwork != nil,
+                     "An artwork-free identity change must not flash the placeholder")
+        try await Task.sleep(nanoseconds:110000000)
+        precondition(service.artwork != nil, "The previous image stays visible through the observed gap")
+        next["artworkData"] = blue.base64EncodedString()
+        service.apply(next)
+        try await Task.sleep(nanoseconds:450000000)
+        precondition(service.title == "blue"
+                     && service.artwork?.tiffRepresentation.map { HighResolutionArtwork.sameArtwork($0, blue) } == true,
+                     "A late high-resolution result must not replace the new track's image")
+
+        var missing = payload("missing")
+        missing["artworkData"] = nil
+        service.apply(missing)
+        try await Task.sleep(nanoseconds:300000000)
+        service.apply(missing)
+        try await Task.sleep(nanoseconds:260000000)
+        precondition(service.artwork == nil, "Repeated image-free updates cannot extend the handoff deadline")
+        service.apply(next)
+        service.apply(missing)
         service.stop()
-        print("PASS same-album same-thumbnail MediaService handoff")
+        precondition(service.artwork == nil, "Stopping during a handoff clears the displayed cover")
+        print("PASS sparse pause, observed handoff sequence, late old cover, deadline and session reset")
         print("PASS exact metadata, duration rejection, image identity, 600px size and cancelled old request")
     }
 }

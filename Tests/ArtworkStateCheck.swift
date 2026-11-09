@@ -25,7 +25,10 @@ import Foundation
         state.expire(now: 400)
         precondition(state.artwork == "cover-A", "Pause alone cannot expire artwork")
         state.receive(song("B"), now: 401)
-        precondition(state.artwork == nil && state.expiresAt == nil, "A new track with no image clears immediately")
+        precondition(state.artwork == nil && state.isAwaitingReplacement && state.expiresAt == 401.5,
+                     "Invalidate the old track image immediately and bound the visual handoff")
+        state.receive(song("B"), now: 401.2)
+        precondition(state.expiresAt == 401.5, "Repeated handoff snapshots cannot extend the deadline")
         state.receive(song("B", "cover-A"), now: 402)
         precondition(state.artwork == "cover-A", "Tracks on the same album may share artwork")
         state.receive(song("C", "cover-A", album: "Other"), now: 403)
@@ -36,14 +39,35 @@ import Foundation
         precondition(state.artwork == "cover-C")
         state.receive(song("D", "cover-D", album: "Next"), now: 406)
         precondition(state.artwork == "cover-D", "A fresh cover can arrive with the new track")
-        state.receive(song("D" , album: "Next"), now: 407)
-        state.expire(now: 407.5)
-        precondition(state.artwork == nil, "Missing image with a valid title also expires")
-        state.receive(song("D", "cover-D", album: "Next"), now: 408)
+        var sparsePause = song("D")
+        sparsePause["album"] = nil
+        sparsePause["artist"] = nil
+        sparsePause["playing"] = false
+        state.receive(sparsePause, now: 407)
+        precondition(state.artwork == "cover-D", "Paused update missing artwork and optional metadata retains the cover")
+        state.receive([:], now: 407.2)
+        state.expire(now: 407.8)
+        precondition(state.artwork == "cover-D", "A paused session tolerates a transient empty snapshot")
+        state.receive(song("D", album: "Next"), now: 407.9)
+        state.expire(now: 408.5)
+        precondition(state.artwork == "cover-D", "Resume with the same title and no image retains the cover")
+        state.receive(song("D", "cover-D", album: "Next"), now: 408.6)
         state.receive(song("D", "cover-D", album: "Next", source: "other-player"), now: 409)
-        precondition(state.artwork == nil, "Player changes cannot borrow old artwork")
+        precondition(state.artwork == nil && !state.isAwaitingReplacement, "Player changes cannot borrow old artwork")
         state = ArtworkState()
+        precondition(state.artwork == nil, "Session reset clears the current cover")
+        var firstEdition = song("D", "cover-D", album: "Next")
+        firstEdition["contentItemIdentifier"] = "edition-1"
         state.receive(song("D", "cover-D", album: "Next"), now: 410)
+        firstEdition["artworkData"] = nil
+        state.receive(firstEdition, now: 410.5)
+        precondition(state.artwork == "cover-D", "A newly reported identifier enriches the current track")
+        var secondEdition = song("D", album: "Next")
+        secondEdition["contentItemIdentifier"] = "edition-2"
+        state.receive(secondEdition, now: 411)
+        precondition(state.artwork == nil, "Matching title cannot keep the old cover when the track identifier changes")
+        state = ArtworkState()
+        state.receive(song("D", "cover-D", album: "Next"), now: 412)
         precondition(state.artwork == "cover-D", "Reconnect accepts a new snapshot")
         print("PASS artwork gap deadline, recovery, pause, track changes, stale cross-album image, shared album, player switch and reset")
     }

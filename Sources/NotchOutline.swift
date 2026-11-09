@@ -8,20 +8,9 @@ enum NotchCorners {
     static let radius: CGFloat = 8
     static let expandedRadius: CGFloat = 28
     static let contentInset: CGFloat = 10
-    static let expandedContentHeight: CGFloat = 176
     static func bottomRadius(height: CGFloat, compactHeight: CGFloat) -> CGFloat {
-        let p = min(1, max(0, (height - compactHeight) / expandedContentHeight))
+        let p = min(1, max(0, (height - compactHeight) / NotchLayout.expandedContentHeight))
         return radius * compactHeight / 32 + (expandedRadius - radius * compactHeight / 32) * p
-    }
-}
-
-enum CompactNotchLayout {
-    static let outerInset: CGFloat = 14
-    static let artworkSize: CGFloat = 22
-    static let hardwareClearance: CGFloat = 8
-
-    static func width(notchWidth: CGFloat) -> CGFloat {
-        notchWidth + 2 * (outerInset + artworkSize + hardwareClearance)
     }
 }
 

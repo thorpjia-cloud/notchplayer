@@ -165,7 +165,12 @@ final class MediaService: ObservableObject {
     }
     private func refreshArtwork() {
         artworkExpiry?.cancel(); artworkExpiry = nil
-        updateArtwork(artworkState.artwork)
+        if artworkState.isAwaitingReplacement && artwork != nil {
+            // Keep only the already-rendered image. The old request has no current artwork token.
+            highResolutionArtwork.cancel()
+        } else {
+            updateArtwork(artworkState.artwork)
+        }
         guard let deadline = artworkState.expiresAt else { return }
         let connection = connectionID
         let work = DispatchWorkItem { [weak self] in

@@ -46,10 +46,21 @@ import SwiftUI
             close(subtract(m,b),subtract(c,n))
             close(subtract(subtract(m,b),subtract(b,a)),subtract(subtract(d,c),subtract(c,n)))
         }
-        let width = CompactNotchLayout.width(notchWidth: 185)
+        let layout = NotchLayout(reservedTop: 32, menuBarInset: 33, notchGap: 185)
+        let width = layout.compactSize(hovering: false).width
         precondition(width == 273)
-        precondition((width - 185) / 2 - CompactNotchLayout.outerInset
-                     - CompactNotchLayout.artworkSize >= 8)
+        precondition((width - 185) / 2 - NotchLayout.compactOuterInset - layout.compactArtworkSize >= 8)
+        precondition(layout.compactSize(hovering: true) == CGSize(width: 285, height: 32))
+        precondition(layout.expandedSize == CGSize(width: 420, height: 208))
+        let panel = NotchLayout.panelFrame(on: CGRect(x: 0, y: 0, width: 1512, height: 982))
+        precondition(panel == CGRect(x: 426, y: 662, width: 660, height: 320))
+        precondition(layout.interactionRect(in: panel, expanded: false, hovering: true)
+                     == CGRect(x: 619.5, y: 950, width: 273, height: 32))
+        precondition(layout.interactionRect(in: panel, expanded: true, hovering: true)
+                     == CGRect(x: 560, y: 774, width: 392, height: 208))
+        let shorterMenu = NotchLayout(reservedTop: 32, menuBarInset: 24)
+        precondition(shorterMenu.compactSize(hovering: false) == CGSize(width: 252, height: 24))
+        precondition(shorterMenu.compactArtworkSize == 16)
         for top: CGFloat in [32, 44] {
             for step in 0...100 {
                 let progress = CGFloat(step) / 100
@@ -75,7 +86,7 @@ import SwiftUI
             }
             let compact = NotchOutline(compactHeight: top)
                 .path(in: CGRect(x: 0, y: 0, width: width, height: top))
-            for x in [CompactNotchLayout.outerInset, CompactNotchLayout.outerInset + 22] {
+            for x in [NotchLayout.compactOuterInset, NotchLayout.compactOuterInset + 22] {
                 for y in [(top - 22) / 2, (top + 22) / 2] {
                     precondition(compact.contains(CGPoint(x: x, y: y)))
                     precondition(compact.contains(CGPoint(x: width - x, y: y)))
@@ -89,9 +100,9 @@ import SwiftUI
             // Only the closing edge moves offscreen; every visible corner and side stays identical.
             precondition(Array(optical.prefix(expanded.count)) == expanded)
             precondition(optical.dropFirst(expanded.count).map(\.y) == [-32, -32, 0])
-            precondition(NotchCorners.bottomRadius(height: top + NotchCorners.expandedContentHeight, compactHeight: top) == NotchCorners.expandedRadius)
+            precondition(NotchCorners.bottomRadius(height: top + NotchLayout.expandedContentHeight, compactHeight: top) == NotchCorners.expandedRadius)
 
         }
-        print("Compact width, hardware clearance, unclipped wings, monotone morph edges, and native continuous bottom corners and smooth concave shoulders passed")
+        print("Settled layout and hit regions, hardware clearance, unclipped wings, monotone morph edges, and native continuous bottom corners and smooth concave shoulders passed")
     }
 }
