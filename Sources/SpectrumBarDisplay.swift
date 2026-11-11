@@ -3,12 +3,13 @@ import SwiftUI
 // Separate rendering from audio capture so the actual small-size glass can be checked with fixed levels.
 struct SpectrumBarDisplay: View {
     let levels: [CGFloat]
-    let upper: Color
-    let lower: Color
+    let gradients: [ArtworkPalette.WaveformGradient]
 
-    private var gradient: LinearGradient {
+    private func gradient(for colors: ArtworkPalette.WaveformGradient) -> LinearGradient {
+        let upper = Color(nsColor: colors.top)
+        let lower = Color(nsColor: colors.bottom)
         // Readable endpoints keep the smooth vertical transition visible on short bars.
-        LinearGradient(stops: [
+        return LinearGradient(stops: [
             .init(color: upper, location: 0),
             .init(color: upper, location: 0.12),
             .init(color: lower, location: 0.88),
@@ -19,7 +20,8 @@ struct SpectrumBarDisplay: View {
     private var coloredBars: some View {
         HStack(alignment: .center, spacing: 1.25) {
             ForEach(levels.indices, id: \.self) { i in
-                Capsule().fill(gradient).opacity(0.98)
+                let colors = gradients[i]
+                Capsule().fill(gradient(for: colors)).opacity(ArtworkPalette.WaveformGradient.opacity)
                     .overlay {
                         // Keep the reflection subpixel-thin; a wide white rim erases a narrow bar's hue.
                         Capsule().strokeBorder(
@@ -31,7 +33,7 @@ struct SpectrumBarDisplay: View {
                             ], startPoint: .leading, endPoint: .trailing), lineWidth: 0.2
                         )
                     }
-                    .colorMultiply(Color(white: 1 - 0.32 * Double(i) / Double(max(1, levels.count - 1))))
+                    .colorMultiply(Color(white: Double(colors.dimming)))
                     .frame(width: 2.25, height: 2.25 + 13.75 * levels[i])
             }
         }
@@ -57,7 +59,6 @@ struct SpectrumBarDisplay: View {
                 coloredBars
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: upper)
-        .animation(.easeInOut(duration: 0.35), value: lower)
+        .animation(.easeInOut(duration: 0.35), value: gradients)
     }
 }

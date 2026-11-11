@@ -7,6 +7,29 @@ import AppKit
         return (h, s, v)
     }
     static func difference(_ a: CGFloat, _ b: CGFloat) -> CGFloat { min(abs(a - b), 1 - abs(a - b)) }
+    static func luminance(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat) -> CGFloat {
+        func linear(_ value: CGFloat) -> CGFloat {
+            value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+    }
+    static func checkWaveform(_ colors: ArtworkPalette.Colors) -> [ArtworkPalette.WaveformGradient] {
+        let background = PanelAppearance.compactBackground
+        let backgroundLuminance = luminance(background.redComponent, background.greenComponent, background.blueComponent)
+        let gradients = colors.waveformGradients(barCount: 6, background: background)
+        for gradient in gradients {
+            func contrast(_ color: NSColor) -> CGFloat {
+                let rgb = color.usingColorSpace(.sRGB)!
+                let scale = gradient.dimming * ArtworkPalette.WaveformGradient.opacity
+                let foreground = luminance(rgb.redComponent * scale, rgb.greenComponent * scale, rgb.blueComponent * scale)
+                return (foreground + 0.05) / (backgroundLuminance + 0.05)
+            }
+            let top = contrast(gradient.top)
+            let bottom = contrast(gradient.bottom)
+            precondition(top >= 3 && bottom >= top, "Both rendered endpoints must remain visible, dark over light")
+        }
+        return gradients
+    }
     static func image(_ pixel: (Int, Int) -> NSColor) -> NSImage {
         let size = 40
         var bytes = [UInt8](repeating: 0, count: size * size * 4)
@@ -99,6 +122,20 @@ import AppKit
         let single = ArtworkPalette.colors(from: image { _, _ in blue })
         precondition(single.primary == single.secondary, "A solid cover cannot invent a second color")
         precondition(ArtworkPalette.colors(from: image { _, _ in .clear }) == ArtworkPalette.fallback)
+        let placeholder = checkWaveform(ArtworkPalette.fallback)
+        for shade in [0.0, 0.08] {
+            let dim = ArtworkPalette.colors(from: image { _, _ in NSColor(srgbRed: shade, green: shade, blue: shade, alpha: 1) })
+            precondition(hsv(dim.primary).v < 0.1, "Keep the original panel tint")
+            precondition(checkWaveform(dim) == placeholder, "Near-black neutral covers should use the visible gray gradient")
+        }
+        let darkBlue = NSColor(srgbRed: 0.01, green: 0.03, blue: 0.15, alpha: 1)
+        let darkBluePalette = ArtworkPalette.colors(from: image { _, _ in darkBlue })
+        for bar in checkWaveform(darkBluePalette) {
+            precondition(difference(hsv(bar.top).h, hsv(darkBlue).h) < 0.04)
+        }
+        let normal = checkWaveform(colors)
+        precondition(normal.allSatisfy { $0.bottom == colors.secondary }, "Keep the orange endpoint where already readable")
         print("PASS hue-area primary, substantial contrasting secondary, neutral fallback, dark-on-top order, transparency, and deterministic extraction")
+        print("PASS all waveform endpoints on the compact background, neutral dark covers, and dark hue preservation")
     }
 }

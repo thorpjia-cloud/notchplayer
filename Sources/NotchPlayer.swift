@@ -155,7 +155,7 @@ struct SiriGlassSurface: View, Animatable {
             .clipShape(outline)
             .opacity(usesBlackHeader ? reveal : 0)
             outline
-                .fill(Color(red: 0.025, green: 0.027, blue: 0.03))
+                .fill(Color(nsColor: PanelAppearance.compactBackground))
                 .opacity(1 - reveal)
         }
         .allowsHitTesting(false)
@@ -383,7 +383,7 @@ struct MusicView: View {
                             .foregroundStyle(.secondary)
                     }
                 }.frame(height: 44, alignment: .top)
-                Spacer(minLength: 1)
+                Spacer(minLength: 0)
                 PlaybackProgressControl(progress: media.progress, duration: media.duration,
                                         available: media.available, accent: panelAppearance.progressTint, seek: media.seek,
                                         showsTimes: true) { editing in
@@ -409,18 +409,16 @@ struct MusicView: View {
                 .foregroundStyle(.primary)
                 .disabled(!media.available)
                 .frame(maxWidth: .infinity)
-                Spacer(minLength: 1)
+                Spacer(minLength: 0)
                 VolumeControl(volume: media.volume) { editing in
                     model.scrubbing = editing
                     if !editing { model.scheduleClose() }
                 }.frame(height: 16)
-                Spacer(minLength: 1)
+                Spacer(minLength: 0)
                 AudioOutputPicker(volume: media.volume, presentationChanged: model.setOutputPickerPresented,
                                   buttonReady: { model.outputPickerButton = $0 }, showsName: true)
-                    .frame(maxWidth: .infinity).frame(height: 28)
+                    .frame(maxWidth: .infinity).frame(height: 40)
                     .background { DeviceCornerBackground(fill: panelAppearance.deviceButtonFill) }
-                    .padding(.trailing, NotchCorners.contentInset)
-                    .padding(.bottom, NotchCorners.contentInset)
             }
             .frame(maxWidth: .infinity).frame(height: NotchLayout.expandedArtworkSize)
         }
@@ -442,8 +440,8 @@ struct MusicView: View {
     }
     private var bars: some View {
         SpectrumBars(spectrum: media.spectrum,
-                     upper: Color(nsColor: media.artworkColors.waveformTop),
-                     lower: Color(nsColor: media.artworkColors.waveformBottom))
+                     gradients: media.artworkColors.waveformGradients(barCount: SpectrumAnalyzer.ranges.count,
+                                                                      background: PanelAppearance.compactBackground))
     }
 }
 
@@ -508,10 +506,9 @@ struct VolumeControl: View {
 
 struct SpectrumBars: View {
     @ObservedObject var spectrum: AudioSpectrum
-    var upper: Color
-    var lower: Color
+    var gradients: [ArtworkPalette.WaveformGradient]
     var body: some View {
-        SpectrumBarDisplay(levels: spectrum.levels, upper: upper, lower: lower)
+        SpectrumBarDisplay(levels: spectrum.levels, gradients: gradients)
             .help(spectrum.status)
     }
 }

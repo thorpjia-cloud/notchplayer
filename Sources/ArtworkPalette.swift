@@ -8,6 +8,33 @@ enum ArtworkPalette {
         // Dark-to-light ordering is independent of which hue supplies the panel tint.
         var waveformTop: NSColor { brightness(primary) <= brightness(secondary) ? primary : secondary }
         var waveformBottom: NSColor { brightness(primary) <= brightness(secondary) ? secondary : primary }
+
+        func waveformGradients(barCount: Int, background: NSColor) -> [WaveformGradient] {
+            let nearlyBlack = [primary, secondary].allSatisfy { color in
+                guard let rgb = color.usingColorSpace(.sRGB) else { return false }
+                return brightness(rgb) < 0.025 && rgb.saturationComponent < 0.18
+            }
+            let palette = nearlyBlack ? ArtworkPalette.fallback : self
+            let top = palette.waveformTop
+            let bottom = palette.waveformBottom
+            let reference = (brightness(background) + 0.05) * 3 - 0.05
+            return (0..<barCount).map { index in
+                let dimming = 1 - 0.32 * CGFloat(index) / CGFloat(max(1, barCount - 1))
+                let upper = visibleColor(top, dimming: dimming, minimumLuminance: reference)
+                let lower = visibleColor(bottom, dimming: dimming, minimumLuminance: reference)
+                if brightness(upper) <= brightness(lower) {
+                    return WaveformGradient(top: upper, bottom: lower, dimming: dimming)
+                }
+                return WaveformGradient(top: lower, bottom: upper, dimming: dimming)
+            }
+        }
+    }
+
+    struct WaveformGradient: Equatable {
+        static let opacity = 0.98
+        let top: NSColor
+        let bottom: NSColor
+        let dimming: CGFloat
     }
 
     static let fallback = Colors(primary: NSColor(white: 0.72, alpha: 1),
@@ -26,15 +53,39 @@ enum ArtworkPalette {
         }
     }
 
-    private static func brightness(_ color: NSColor) -> CGFloat {
+    private static func brightness(_ color: NSColor, scale: CGFloat = 1) -> CGFloat {
         // App startup uses a grayscale fallback; RGB component access requires conversion first.
         guard let color = color.usingColorSpace(.sRGB) else { return 0 }
         func linear(_ value: CGFloat) -> CGFloat {
             value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
         }
         // Perceived brightness keeps saturated blue from tying with white just because both peak at 255.
-        return 0.2126 * linear(color.redComponent) + 0.7152 * linear(color.greenComponent)
-            + 0.0722 * linear(color.blueComponent)
+        return 0.2126 * linear(color.redComponent * scale) + 0.7152 * linear(color.greenComponent * scale)
+            + 0.0722 * linear(color.blueComponent * scale)
+    }
+
+    private static func visibleColor(_ color: NSColor, dimming: CGFloat, minimumLuminance: CGFloat) -> NSColor {
+        // Use the dimmed core and ignore any light from the reflection or backdrop.
+        let scale = dimming * WaveformGradient.opacity
+        guard brightness(color, scale: scale) < minimumLuminance,
+              let rgb = color.usingColorSpace(.sRGB) else { return color }
+        func lifted(by amount: CGFloat) -> NSColor {
+            NSColor(srgbRed: rgb.redComponent + (1 - rgb.redComponent) * amount,
+                    green: rgb.greenComponent + (1 - rgb.greenComponent) * amount,
+                    blue: rgb.blueComponent + (1 - rgb.blueComponent) * amount, alpha: 1)
+        }
+        // Find the smallest lift that meets the floor while preserving the hue.
+        var low: CGFloat = 0
+        var high: CGFloat = 1
+        for _ in 0..<8 {
+            let midpoint = (low + high) / 2
+            if brightness(lifted(by: midpoint), scale: scale) >= minimumLuminance {
+                high = midpoint
+            } else {
+                low = midpoint
+            }
+        }
+        return lifted(by: high)
     }
 
     private static func difference(_ a: NSColor, _ b: NSColor) -> CGFloat {

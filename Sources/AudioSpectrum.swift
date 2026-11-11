@@ -82,8 +82,9 @@ final class SpectrumAnalyzer {
             guard lower < upper else { return 0 }
             let energy = power[lower..<upper].reduce(0, +)
             let decibels = 10 * log10(max(energy, 1e-12))
-            // A fixed dB scale preserves actual relative band energy; no per-band auto gain.
-            return max(0, min(1, (decibels + 60) / 54))
+            // Keep a shared dB scale. Ease in near the noise floor and leave headroom for peaks.
+            let level = max(0, min(1, (decibels + 54) / 54))
+            return level * level * (3 - 2 * level)
         }
         if !receivedSignal && levels.contains(where: { $0 > 0.02 }) {
             receivedSignal = true
@@ -155,10 +156,7 @@ final class AudioSpectrum: ObservableObject {
             self.previousTick = now
             let target = self.analyzer?.snapshot() ?? Array(repeating: 0, count: SpectrumAnalyzer.ranges.count)
             let next = self.levels.enumerated().map { i, value -> CGFloat in
-                let destination = CGFloat(target[i])
-                let tau = destination > value ? 0.035 : 0.18
-                let result = value + (destination - value) * CGFloat(1 - exp(-dt / tau))
-                return result < 0.001 ? 0 : result
+                Self.smoothedLevel(value, toward: CGFloat(target[i]), over: dt)
             }
             if next != self.levels { self.levels = next }
             if self.activeSource == nil && self.levels.allSatisfy({ $0 == 0 }) {
@@ -167,6 +165,12 @@ final class AudioSpectrum: ObservableObject {
         }
         self.timer = timer
         RunLoop.main.add(timer, forMode: .common)
+    }
+    static func smoothedLevel(_ level: CGFloat, toward target: CGFloat, over elapsed: TimeInterval) -> CGFloat {
+        // Rise promptly on a beat and fall between beats while smoothing successive redraws.
+        let timeConstant = target > level ? 0.022 : 0.090
+        let result = level + (target - level) * CGFloat(1 - exp(-elapsed / timeConstant))
+        return result < 0.001 ? 0 : result
     }
     @available(macOS 14.2, *)
     private func startCapture(bundleID: String) throws -> SpectrumAnalyzer {

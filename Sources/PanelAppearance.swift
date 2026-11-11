@@ -3,6 +3,8 @@ import SwiftUI
 
 /// The expanded panel palette follows SwiftUI's system appearance.
 struct PanelAppearance {
+    static let compactBackground = NSColor(srgbRed: 0.025, green: 0.027, blue: 0.03, alpha: 1)
+
     let colorScheme: ColorScheme
     let artworkColor: NSColor
 
