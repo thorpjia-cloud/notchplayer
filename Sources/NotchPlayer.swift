@@ -98,54 +98,6 @@ struct StableBackdrop: NSViewRepresentable {
     }
 }
 
-// Keep the native backdrop live: fade its material through AppKit's own maskImage,
-// rather than rasterizing the representable with a SwiftUI mask or fading its entire output.
-final class FadingControlEffectView: NSVisualEffectView {
-    private var maskSize: NSSize = .zero
-    override func layout() {
-        super.layout()
-        guard bounds.size != maskSize, bounds.width > 0, bounds.height > 0 else { return }
-        maskSize = bounds.size
-        let count = 128
-        let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: count, pixelsHigh: count,
-                                      bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
-                                      isPlanar: false, colorSpaceName: .deviceRGB,
-                                      bytesPerRow: 0, bitsPerPixel: 0)!
-        func smooth(_ value: Double) -> Double {
-            let t = min(1, max(0, value))
-            return t * t * (3 - 2 * t)
-        }
-        for y in 0..<count {
-            let v = Double(y) / Double(count - 1)
-            for x in 0..<count {
-                let u = Double(x) / Double(count - 1)
-                let alpha = smooth(min(u, 1-u) / 0.20) * smooth(min(v, 1-v) / 0.24)
-                let offset = y * bitmap.bytesPerRow + x * 4
-                let data = bitmap.bitmapData!
-                data[offset] = 255; data[offset+1] = 255; data[offset+2] = 255
-                data[offset+3] = UInt8((alpha * 255).rounded())
-            }
-        }
-        let image = NSImage(size: bounds.size)
-        image.addRepresentation(bitmap)
-        maskImage = image
-    }
-}
-
-struct ControlReadabilityBackdrop: NSViewRepresentable {
-    func makeNSView(context: Context) -> FadingControlEffectView {
-        let view = FadingControlEffectView()
-        view.material = .hudWindow
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.appearance = nil
-        return view
-    }
-    func updateNSView(_ view: FadingControlEffectView, context: Context) {
-        view.state = .active
-    }
-}
-
 // Derive light timing from the same reversible progress as the expanding geometry.
 private func glassReveal(_ progress: CGFloat, from start: CGFloat, to end: CGFloat) -> Double {
     let t = min(1, max(0, (progress - start) / (end - start)))
@@ -157,7 +109,7 @@ struct SiriGlassSurface: View, Animatable {
     var usesBlackHeader: Bool
     var topHeight: CGFloat
     var progress: CGFloat
-    var artworkTint: Color
+    var panelAppearance: PanelAppearance
     var outline: NotchOutline
     var animatableData: CGFloat {
         get { progress }
@@ -182,6 +134,7 @@ struct SiriGlassSurface: View, Animatable {
             } else {
                 StableBackdrop(expanded: true).clipShape(outline).opacity(reveal)
             }
+            outline.fill(panelAppearance.surface).opacity(reveal)
             artworkWash
             // GeometryReader prevents the transition layer's fixed height from enlarging the collapsed background.
             GeometryReader { geometry in
@@ -210,36 +163,15 @@ struct SiriGlassSurface: View, Animatable {
     }
 
     private var artworkWash: some View {
-        // Separate neutral absorption from the cover hue so the color reads as part of the glass.
         GeometryReader { geometry in
             VStack(spacing: 0) {
-                // Extend the first wash color upward without moving the established lower gradient.
-                Color.black.opacity(0)
-                    .overlay(artworkTint.opacity(0.02))
+                panelAppearance.headerTint
                     .opacity(usesBlackHeader ? 0 : 1)
                     .frame(height: min(topHeight, geometry.size.height))
-                LinearGradient(stops: [
-                    .init(color: artworkTint.opacity(0.02), location: 0),
-                    .init(color: artworkTint.opacity(0.045), location: 0.25),
-                    .init(color: artworkTint.opacity(0.075), location: 0.55),
-                    .init(color: artworkTint.opacity(0.10), location: 0.80),
-                    .init(color: artworkTint.opacity(0.085), location: 1)
-                ], startPoint: .top, endPoint: .bottom)
-                .background {
-                    // Neutral absorption controls white-background glare while leaving the native lens unmasked.
-                    if #unavailable(macOS 26.0) {
-                    LinearGradient(stops: [
-                        .init(color: .black.opacity(0.38), location: 0),
-                        .init(color: .black.opacity(0.32), location: 0.24),
-                        .init(color: .black.opacity(0.27), location: 0.55),
-                        .init(color: .black.opacity(0.235), location: 0.80),
-                        .init(color: .black.opacity(0.22), location: 1)
-                    ], startPoint: .top, endPoint: .bottom)
-                    }
-                }
+                panelAppearance.artworkWash
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: artworkTint)
+        .animation(.easeInOut(duration: 0.35), value: panelAppearance.artworkColor)
         .clipShape(outline)
         .opacity(reveal)
     }
@@ -317,7 +249,7 @@ struct NotchMorph: AnimatableModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var nativeGlassIsActive: Bool
     var usesBlackHeader: Bool
-    var artworkTint: Color
+    var panelAppearance: PanelAppearance
     var progress: CGFloat
     var presence: CGFloat
     var layout: NotchLayout
@@ -343,7 +275,7 @@ struct NotchMorph: AnimatableModifier {
             .clipShape(outline)
             .background {
                 SiriGlassSurface(nativeGlassIsActive: nativeGlassIsActive, usesBlackHeader: usesBlackHeader, topHeight: topHeight,
-                                 progress: progress, artworkTint: artworkTint, outline: outline)
+                                 progress: progress, panelAppearance: panelAppearance, outline: outline)
             }
             .background { GlassLiftShadow(progress: progress, outline: outline) }
             .overlay { GlassReflectionStroke(topHeight: usesBlackHeader ? topHeight : 0, progress: progress, outline: outline) }
@@ -377,8 +309,10 @@ private struct CompactWingReveal: AnimatableModifier {
 struct MusicView: View {
     @ObservedObject var model: NookModel
     @ObservedObject var media: MediaService
-    private var accent: Color { Color(nsColor: media.artworkColors.primary) }
-    private var glassTint: Color { accent }
+    @Environment(\.colorScheme) private var colorScheme
+    private var panelAppearance: PanelAppearance {
+        PanelAppearance(colorScheme: colorScheme, artworkColor: media.artworkColors.primary)
+    }
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
@@ -387,7 +321,7 @@ struct MusicView: View {
                     controls.transition(.opacity.combined(with: .offset(y: -8)))
                 }
             }
-            .modifier(NotchMorph(nativeGlassIsActive: model.nativeGlassIsActive, usesBlackHeader: model.usesBlackHeader, artworkTint: glassTint,
+            .modifier(NotchMorph(nativeGlassIsActive: model.nativeGlassIsActive, usesBlackHeader: model.usesBlackHeader, panelAppearance: panelAppearance,
                                  progress: model.expanded ? 1 : 0,
                                  presence: model.musicVisible ? 1 : 0,
                                  layout: model.layout, closedSize: model.layout.compactSize(hovering: model.hovering),
@@ -451,7 +385,7 @@ struct MusicView: View {
                 }.frame(height: 44, alignment: .top)
                 Spacer(minLength: 1)
                 PlaybackProgressControl(progress: media.progress, duration: media.duration,
-                                        available: media.available, accent: accent, seek: media.seek,
+                                        available: media.available, accent: panelAppearance.progressTint, seek: media.seek,
                                         showsTimes: true) { editing in
                     model.scrubbing = editing
                     if !editing { model.scheduleClose() }
@@ -484,7 +418,7 @@ struct MusicView: View {
                 AudioOutputPicker(volume: media.volume, presentationChanged: model.setOutputPickerPresented,
                                   buttonReady: { model.outputPickerButton = $0 }, showsName: true)
                     .frame(maxWidth: .infinity).frame(height: 28)
-                    .background { DeviceCornerBackground() }
+                    .background { DeviceCornerBackground(fill: panelAppearance.deviceButtonFill) }
                     .padding(.trailing, NotchCorners.contentInset)
                     .padding(.bottom, NotchCorners.contentInset)
             }

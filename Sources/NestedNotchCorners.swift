@@ -35,11 +35,13 @@ struct NotchCornerContainer: ViewModifier {
 }
 
 struct DeviceCornerBackground: View {
+    let fill: Color
+
     @ViewBuilder var body: some View {
-        if #available(macOS 26.0, *) { ConcentricRectangle(corners: .concentric, isUniform: true).fill(.white.opacity(0.07))
+        if #available(macOS 26.0, *) { ConcentricRectangle(corners: .concentric, isUniform: true).fill(fill)
             .clipShape(ResolvedContinuousCorner(radius: max(0, NotchCorners.expandedRadius - 2 * NotchCorners.contentInset))) }
         else { RoundedRectangle(cornerRadius: max(0, NotchCorners.expandedRadius - 2 * NotchCorners.contentInset),
-                                style: .continuous).fill(.white.opacity(0.07)) }
+                                style: .continuous).fill(fill) }
     }
 }
 struct ArtworkCornerClip: ViewModifier {

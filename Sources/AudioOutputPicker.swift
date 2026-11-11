@@ -114,6 +114,14 @@ private final class CenteredOutputButtonCell: NSButtonCell {
     }
 }
 
+// This button draws its own symbol and title, so appearance changes must invalidate that drawing.
+private final class CenteredOutputButton: NSButton {
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+}
+
 struct AudioOutputPicker: NSViewRepresentable {
     @ObservedObject var volume: OutputVolume
     var presentationChanged: (Bool) -> Void
@@ -123,7 +131,7 @@ struct AudioOutputPicker: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSButton {
-        let button = NSButton(image: NSImage(systemSymbolName: "airplayaudio", accessibilityDescription: "播放设备")!,
+        let button = CenteredOutputButton(image: NSImage(systemSymbolName: "airplayaudio", accessibilityDescription: "播放设备")!,
                               target: context.coordinator, action: #selector(Coordinator.showDevices(_:)))
         button.cell = CenteredOutputButtonCell(imageCell: NSImage(systemSymbolName: "airplayaudio", accessibilityDescription: nil))
         button.target = context.coordinator
@@ -161,6 +169,7 @@ struct AudioOutputPicker: NSViewRepresentable {
             defer { volume?.refresh(); presentationChanged(false) }
             selectionError = nil
             let menu = NSMenu()
+            menu.appearance = button.effectiveAppearance
             button.menu = menu
             defer { button.menu = nil }
             menu.autoenablesItems = false
