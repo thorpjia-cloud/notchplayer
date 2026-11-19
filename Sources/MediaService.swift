@@ -19,6 +19,16 @@ final class MediaService: ObservableObject {
     private var artworkToken: String?
     private var artworkState = ArtworkState()
     private var artworkExpiry: DispatchWorkItem?
+    private var journalDeadline: TimeInterval?
+    private var journalTimer = 0
+    private var journalRecovery = 0
+    private let journal = ArtworkJournal.shared
+    private var checkedAlbumHandoff: ArtworkState.AlbumHandoff?
+    private var albumLookup: Task<Void, Never>?
+    private var artworkRecoveryTrack: ArtworkState.Track?
+    private var artworkRecoveryID = UUID()
+    private var artworkRecoveryAfter: TimeInterval = 0
+    private var artworkQuery: Process?
     private var connectionID = UUID()
     @Published var playing = false
     @Published var available = false
@@ -40,6 +50,8 @@ final class MediaService: ObservableObject {
     private var framework: URL { resources.appendingPathComponent("MediaRemoteAdapter.framework") }
 
     func start() {
+        journal.session += 1
+        journal.mark("listener_start")
         stopped = false
         let connection = UUID()
         connectionID = connection
@@ -51,6 +63,7 @@ final class MediaService: ObservableObject {
                   let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                   self.session.processDidExit(app.processIdentifier) else { return }
             self.assign(\.sessionActive, false)
+            self.journal.mark("player_exit")
             self.clearPlayback()
         }
         let process = makeProcess(["stream", "--no-diff", "--micros", "--debounce=100"])
@@ -75,15 +88,17 @@ final class MediaService: ObservableObject {
         process.terminationHandler = { [weak self] _ in
             DispatchQueue.main.async {
                 guard let self, self.connectionID == connection, !self.stopped else { return }
+                self.journal.mark("listener_disconnect")
                 self.artworkState.beginGap(now: ProcessInfo.processInfo.systemUptime)
                 self.refreshArtwork()
                 self.error = "音乐连接已断开，请从菜单重新连接"
             }
         }
         do { try process.run(); stream = process }
-        catch { self.error = "无法连接系统正在播放" }
+        catch { journal.mark("listener_start_failed"); self.error = "无法连接系统正在播放" }
     }
     func stop() {
+        journal.mark("listener_stop")
         stopped = true
         connectionID = UUID()
         resetArtwork()
@@ -108,6 +123,7 @@ final class MediaService: ObservableObject {
     func apply(_ value: [String: Any]) {
         if let processID = session.processID,
            NSRunningApplication(processIdentifier: processID)?.isTerminated != false {
+            journal.mark("player_process_gone")
             session.processDidExit(processID)
             assign(\.sessionActive, false)
         }
@@ -157,13 +173,25 @@ final class MediaService: ObservableObject {
         spectrum.update(bundleID: nil, playing: false)
     }
     private func resetArtwork() {
+        if artworkState.track != nil || artwork != nil {
+            journal.mark("artwork_reset")
+            journal.track += 1
+        }
+        if journalDeadline != nil { journal.mark("timer_cancel", "id=\(journalTimer) reset") }
+        journalDeadline = nil
         highResolutionArtwork.cancel()
+        albumLookup?.cancel()
+        albumLookup = nil
+        checkedAlbumHandoff = nil
+        cancelArtworkRecovery()
         artworkExpiry?.cancel(); artworkExpiry = nil
         artworkState = ArtworkState()
         highResolutionTrack = nil; highResolutionDuration = 0; hasHighResolution = false
         updateArtwork(nil)
     }
     private func refreshArtwork() {
+        defer { scheduleArtworkRecoveryIfNeeded() }
+        verifySharedArtworkIfNeeded()
         artworkExpiry?.cancel(); artworkExpiry = nil
         if artworkState.isAwaitingReplacement && artwork != nil {
             // Keep only the already-rendered image. The old request has no current artwork token.
@@ -171,16 +199,148 @@ final class MediaService: ObservableObject {
         } else {
             updateArtwork(artworkState.artwork)
         }
+        if journalDeadline != artworkState.expiresAt {
+            if journalDeadline != nil { journal.mark("timer_cancel", "id=\(journalTimer)") }
+            journalDeadline = artworkState.expiresAt
+            if journalDeadline != nil {
+                journalTimer += 1
+                journal.mark("timer_create", "id=\(journalTimer)")
+            }
+        }
         guard let deadline = artworkState.expiresAt else { return }
+        let timer = journalTimer
         let connection = connectionID
         let work = DispatchWorkItem { [weak self] in
             guard let self, !self.stopped, self.connectionID == connection,
                   self.artworkState.expiresAt == deadline else { return }
+            self.journal.mark("timer_fire", "id=\(timer)")
+            self.journalDeadline = nil
             self.artworkState.expire(now: ProcessInfo.processInfo.systemUptime)
             self.refreshArtwork()
         }
         artworkExpiry = work
         DispatchQueue.main.asyncAfter(deadline: .now() + max(0, deadline - ProcessInfo.processInfo.systemUptime), execute: work)
+    }
+    private func verifySharedArtworkIfNeeded() {
+        let handoff = artworkState.albumHandoff
+        guard handoff != checkedAlbumHandoff else { return }
+        albumLookup?.cancel()
+        checkedAlbumHandoff = handoff
+        guard let handoff else { albumLookup = nil; return }
+        let connection = connectionID
+        albumLookup = Task { @MainActor [weak self, highResolutionArtwork] in
+            let comparison = await highResolutionArtwork.compareAlbums(for: handoff)
+            if !Task.isCancelled, let self, self.connectionID == connection, self.artworkState.albumHandoff == handoff {
+                self.journal.mark("album_id_compare", "result=\(comparison.rawValue)", channel: "album")
+            }
+            guard !Task.isCancelled, let self, !self.stopped, self.connectionID == connection,
+                  self.artworkState.albumHandoff == handoff,
+                  comparison == .same, self.artworkState.acceptSharedArtwork(handoff) else { return }
+            self.journal.mark("shared_album_cover_accept")
+            self.refreshArtwork()
+        }
+    }
+    private func cancelArtworkRecovery() {
+        if artworkRecoveryTrack != nil { journal.mark("recovery_cancel", "id=\(journalRecovery)") }
+        artworkRecoveryID = UUID()
+        artworkRecoveryAfter = 0
+        if artworkQuery?.isRunning == true { artworkQuery?.terminate() }
+        artworkQuery = nil
+        artworkRecoveryTrack = nil
+    }
+    private func scheduleArtworkRecoveryIfNeeded() {
+        let track = artworkState.track
+        if artworkRecoveryTrack != track { cancelArtworkRecovery() }
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now >= artworkRecoveryAfter, artworkQuery == nil, let track, track.source == ArtworkState.Track.netEaseSource,
+              artworkState.artwork == nil, artworkState.expiresAt == nil, stream?.isRunning == true else {
+            if track?.source == ArtworkState.Track.netEaseSource, artworkState.artwork == nil {
+                let reason = artworkRecoveryTrack != nil ? "cooldown_or_query_active" : artworkState.expiresAt != nil ? "handoff_pending" : "listener_unavailable"
+                journal.mark("recovery_skip", reason, channel: "recovery")
+            }
+            return
+        }
+        journalRecovery += 1
+        let query = journalRecovery
+        journal.mark("recovery_schedule", "id=\(query)", channel: "recovery")
+        // A later stream update may re-arm a failed recovery without polling an idle player.
+        artworkRecoveryAfter = now + 30
+        artworkRecoveryID = UUID()
+        artworkRecoveryTrack = track
+        let connection = connectionID
+        let recovery = artworkRecoveryID
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self else { return }
+            guard self.connectionID == connection, self.artworkRecoveryID == recovery,
+                  self.artworkState.track == track, self.artworkState.artwork == nil,
+                  self.stream?.isRunning == true else {
+                self.journal.mark("recovery_skip", "id=\(query) scheduled_query_invalidated")
+                return
+            }
+            self.queryArtwork(for: track, connection: connection)
+        }
+    }
+    private func queryArtwork(for track: ArtworkState.Track, connection: UUID, previouslyObserved: String? = nil) {
+        let generation = artworkState.generation
+        let process = makeProcess(["get", "--micros"])
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        let query = journalRecovery
+        do { try process.run() } catch { journal.mark("recovery_failed", "id=\(query) launch"); return }
+        journal.mark("recovery_start", "id=\(query) retry=\(previouslyObserved != nil)")
+        artworkQuery = process
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            if process.isRunning {
+                self?.journal.mark("recovery_timeout", "id=\(query)")
+                process.terminate()
+            }
+        }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let bytes = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            let snapshot = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any]
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                func reject(_ reason: String) { self.journal.mark("recovery_reject", "id=\(query) \(reason)") }
+                guard self.artworkQuery === process else { reject("superseded"); return }
+                self.artworkQuery = nil
+                guard process.terminationStatus == 0 else { reject("process_exit status=\(process.terminationStatus)"); return }
+                guard self.connectionID == connection, self.artworkState.generation == generation, self.artworkState.track == track else { reject("track_or_connection_changed"); return }
+                guard let snapshot else { reject("no_snapshot"); return }
+                guard let pid = self.session.processID, NSRunningApplication(processIdentifier: pid)?.isTerminated == false else { reject("no_live_session"); return }
+                guard (snapshot["processIdentifier"] as? NSNumber)?.int32Value == pid else { reject("player_pid_mismatch"); return }
+                guard let encoded = snapshot["artworkData"] as? String else { reject("no_image"); return }
+                guard let data = Data(base64Encoded: encoded), NSImage(data: data) != nil else { reject("invalid_image"); return }
+                let previousImage = self.artworkState.recoveryReturnedPreviousArtwork(snapshot)
+                guard self.artworkState.recoverArtwork(from: snapshot, previouslyObserved: previouslyObserved) else {
+                    reject(previousImage ? "previous_image same_as_rejected=true" : (self.artworkState.artwork == nil ? "identity_or_handoff_guard same_as_rejected=unverified" : "already_has_image"))
+                    if previousImage {
+                        self.artworkState.considerSharedArtwork(encoded)
+                        self.verifySharedArtworkIfNeeded()
+                        if previouslyObserved == nil {
+                            self.journal.mark("recovery_retry_scheduled", "id=\(query)")
+                            self.retryArtworkQuery(for: track, connection: connection, observed: encoded)
+                        }
+                    }
+                    return
+                }
+                self.journal.mark("recovery_accept", "id=\(query) same_as_rejected=\(previousImage) repeated_live_confirmation=\(previousImage && previouslyObserved == encoded)")
+                self.refreshArtwork()
+            }
+        }
+    }
+    private func retryArtworkQuery(for track: ArtworkState.Track, connection: UUID, observed: String) {
+        let recovery = artworkRecoveryID
+        let generation = artworkState.generation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self, self.connectionID == connection, self.artworkRecoveryID == recovery,
+                  self.artworkState.generation == generation,
+                  self.artworkState.track == track, self.artworkState.artwork == nil,
+                  self.artworkState.expiresAt == nil, self.artworkQuery == nil,
+                  self.stream?.isRunning == true else { return }
+            self.queryArtwork(for: track, connection: connection, previouslyObserved: observed)
+        }
     }
     private func updateArtwork(_ encoded: String?) {
         let imageChanged = encoded != artworkToken
@@ -192,16 +352,24 @@ final class MediaService: ObservableObject {
         artworkToken = encoded
         hasHighResolution = false
         guard let encoded, let data = Data(base64Encoded: encoded), let image = NSImage(data: data) else {
+            journal.mark("cover_default", encoded == nil ? "no_accepted_image" : "decode_failed", channel: "cover")
             artwork = nil; artworkColors = ArtworkPalette.fallback
             return
         }
+        journal.mark("cover_thumbnail", "image_changed=\(imageChanged)", channel: "cover")
         artwork = image
         artworkColors = ArtworkPalette.colors(from: image)
         guard let track else { return }
+        let generation = artworkState.generation
         highResolutionArtwork.resolve(track: track, reference: data, duration: duration) { [weak self] highData in
-            guard let self, self.artworkState.track == track, self.artworkState.artwork == encoded,
-                  let highImage = NSImage(data: highData) else { return }
+            guard let self, self.artworkState.generation == generation, self.artworkState.track == track,
+                  self.artworkState.artwork == encoded,
+                  let highImage = NSImage(data: highData) else {
+                self?.journal.mark("high_resolution_reject", "stale_or_decode_failed", channel: "high")
+                return
+            }
             self.hasHighResolution = true
+            self.journal.mark("cover_high_resolution", channel: "cover")
             self.artwork = highImage
             // Palette remains based on the stable system thumbnail; resolution upgrades do not flash the tint.
         }

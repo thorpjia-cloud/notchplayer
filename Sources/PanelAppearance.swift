@@ -1,7 +1,40 @@
 import AppKit
 import SwiftUI
 
-/// The expanded panel palette follows SwiftUI's system appearance.
+enum ExpandedPanelStyle: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .system: "跟随系统"
+        case .light: "浅色"
+        case .dark: "深色"
+        }
+    }
+    var appearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
+final class ExpandedPanelSettings: ObservableObject {
+    private static let key = "ExpandedPanelStyle"
+    private let defaults: UserDefaults
+    @Published var style: ExpandedPanelStyle {
+        didSet { defaults.set(style.rawValue, forKey: Self.key) }
+    }
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        style = defaults.string(forKey: Self.key).flatMap(ExpandedPanelStyle.init(rawValue:)) ?? .system
+    }
+}
+
+/// The expanded panel palette follows the window's effective appearance.
 struct PanelAppearance {
     static let compactBackground = NSColor(srgbRed: 0.025, green: 0.027, blue: 0.03, alpha: 1)
 
@@ -9,6 +42,7 @@ struct PanelAppearance {
     let artworkColor: NSColor
 
     private var isDark: Bool { colorScheme == .dark }
+    var usesArtworkBackground: Bool { !isDark }
     private var backgroundWhite: CGFloat { isDark ? 0.09 : 0.97 }
     private var backgroundOpacity: CGFloat { isDark ? 0.90 : 0.88 }
 

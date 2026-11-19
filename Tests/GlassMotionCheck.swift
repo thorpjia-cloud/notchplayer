@@ -6,6 +6,19 @@ import Foundation
         precondition(GlassMotion.presenceWidth(progress: 1, notchWidth: 172, visibleWidth: 292) == 292)
         precondition(GlassMotion.presenceTension(progress: 0) == 0)
         precondition(GlassMotion.presenceTension(progress: 1) == 0)
+        precondition(GlassMotion.contentReveal(progress: 0) == 0)
+        precondition(GlassMotion.contentReveal(progress: 1) == 1)
+        precondition(GlassMotion.compactReveal(progress: 0) == 1)
+        precondition(GlassMotion.compactReveal(progress: 1) == 0)
+        var previousReveal: CGFloat = 0
+        for step in 0...100 {
+            let p = CGFloat(step) / 100
+            let reveal = GlassMotion.contentReveal(progress: p)
+            precondition(reveal >= previousReveal && reveal <= 1)
+            precondition(reveal == 0 || GlassMotion.compactReveal(progress: p) == 0,
+                         "Compact and expanded content must not overlap")
+            previousReveal = reveal
+        }
         for step in 0...100 {
             let p = CGFloat(step) / 100
             let width = GlassMotion.presenceWidth(progress: p, notchWidth: 172, visibleWidth: 292)

@@ -2,6 +2,15 @@ import Foundation
 import simd
 
 enum GlassMotion {
+    static func contentReveal(progress: CGFloat) -> CGFloat {
+        let t = min(1, max(0, (progress - 0.32) / 0.58))
+        return t * t * (3 - 2 * t)
+    }
+
+    static func compactReveal(progress: CGFloat) -> CGFloat {
+        let t = min(1, max(0, progress / 0.24))
+        return 1 - t * t * (3 - 2 * t)
+    }
     static func presenceWidth(progress: CGFloat, notchWidth: CGFloat, visibleWidth: CGFloat) -> CGFloat {
         let p = min(1, max(0, progress))
         // The spring already eases time; a second ease-out made the wings jump to full width.

@@ -6,6 +6,7 @@ struct MarqueeTitle: View {
     var fontSize: CGFloat = 15
     var weight: NSFont.Weight = .semibold
     var lineHeight: CGFloat = 19
+    var active = true
     // Explicit storage avoids the SDK State macro requirement in the command-line build.
     private var startedAt = State<Date>(initialValue: Date())
     private var font: NSFont { .systemFont(ofSize: fontSize, weight: weight) }
@@ -15,7 +16,7 @@ struct MarqueeTitle: View {
             let textWidth = ceil((text as NSString).size(withAttributes: [.font: font]).width)
             let overflows = textWidth > geometry.size.width + 0.5
             let distance = textWidth + 28
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !overflows)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !active || !overflows)) { timeline in
                 // A second copy makes the wrap seamless; each pass pauses at the title's start.
                 let elapsed = max(0, timeline.date.timeIntervalSince(startedAt.wrappedValue))
                 let phase = elapsed.truncatingRemainder(dividingBy: 1.4 + distance / 24)

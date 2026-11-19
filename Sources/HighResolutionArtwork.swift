@@ -67,6 +67,47 @@ final class HighResolutionArtwork {
         return error / Double(16 * 16 * 3 * 255) < 0.065
     }
     static func sources(track: ArtworkState.Track, duration: Double, database: URL? = nil) -> [URL] {
+        let albums = matchingAlbums(track: track, duration: duration, database: database, verifyIdentity: false)
+        let urls = (albums ?? []).compactMap { album -> URL? in
+            guard let raw = album["picUrl"] as? String, var components = URLComponents(string: raw) else { return nil }
+            components.scheme = "https"; components.query = "param=600y600"; components.fragment = nil
+            guard let url = components.url, trusted(url) else { return nil }
+            return url
+        }
+        return Set(urls).sorted { $0.absoluteString < $1.absoluteString }
+    }
+
+    enum AlbumComparison: String {
+        case same, different, unverified
+    }
+
+    func compareAlbums(for handoff: ArtworkState.AlbumHandoff) async -> AlbumComparison {
+        let database = self.database
+        return await Task.detached(priority: .utility) {
+            Self.compareAlbums(for: handoff, database: database)
+        }.value
+    }
+
+    static func compareAlbums(for handoff: ArtworkState.AlbumHandoff, database: URL? = nil) -> AlbumComparison {
+        func albumID(for recording: ArtworkState.AlbumTrack) -> String? {
+            guard let albums = matchingAlbums(track: recording.track, duration: recording.duration,
+                                              database: database, verifyIdentity: true),
+                  !albums.isEmpty else { return nil }
+            let ids = albums.compactMap { album -> String? in
+                let id = String(describing: album["id"] ?? "")
+                return !id.isEmpty && id != "0" && id.allSatisfy(\.isNumber) ? id : nil
+            }
+            guard ids.count == albums.count, Set(ids).count == 1 else { return nil }
+            return ids.first
+        }
+        guard let previous = albumID(for: handoff.previous), let current = albumID(for: handoff.current) else {
+            return .unverified
+        }
+        return previous == current ? .same : .different
+    }
+
+    private static func matchingAlbums(track: ArtworkState.Track, duration: Double, database: URL?,
+                                       verifyIdentity: Bool) -> [[String: Any]]? {
         let location = database ?? FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/com.netease.163music/Documents/storage/sqlite_storage.sqlite3")
         var db: OpaquePointer?
@@ -80,31 +121,48 @@ final class HighResolutionArtwork {
             return Date.timeIntervalSinceReferenceDate > pointer.assumingMemoryBound(to: TimeInterval.self).pointee ? 1 : 0
         }, deadline)
         defer { sqlite3_progress_handler(db, 0, nil, nil); deadline.deinitialize(count: 1); deadline.deallocate() }
-        var urls = Set<URL>()
-        // Restrict the lookup to track metadata; never inspect accounts, cookies, or credentials.
-        for query in ["SELECT jsonStr FROM historyTracks WHERE json_extract(jsonStr, '$.name') = ? ORDER BY playtime DESC LIMIT 16",
-                      "SELECT jsonStr FROM dbTrack WHERE json_extract(jsonStr, '$.name') = ? LIMIT 24"] {
+        var matches: [[String: Any]] = []
+        let id = verifyIdentity ? track.providerTrackID : track.id
+        let trackID = id.flatMap { !$0.isEmpty && $0.allSatisfy(\.isNumber) ? $0 : nil }
+        guard !track.artist.isEmpty, duration > 0 || (verifyIdentity && trackID != nil) else { return nil }
+        // Album identity uses each recording's exact title, artist and duration (or stable ID).
+        // The reported album name can still be the previous song's, so it is not an identity filter.
+        for (table, ordering, limit) in [("historyTracks", " ORDER BY playtime DESC", 16), ("dbTrack", "", 24)] {
+            let query = "SELECT jsonStr FROM \(table) WHERE json_extract(jsonStr, '$.name') = ?\(ordering) LIMIT \(limit)"
             var statement: OpaquePointer?
-            guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else { continue }
+            guard sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK else {
+                if verifyIdentity { return nil }
+                continue
+            }
             defer { sqlite3_finalize(statement) }
-            if sqlite3_bind_parameter_count(statement) > 0 {
-                _ = track.title.withCString { sqlite3_bind_text(statement, 1, $0, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self)) }
-            }
-            while sqlite3_step(statement) == SQLITE_ROW {
+            _ = track.title.withCString { sqlite3_bind_text(statement, 1, $0, -1, unsafeBitCast(-1, to: sqlite3_destructor_type.self)) }
+            var rows = 0
+            var status = sqlite3_step(statement)
+            while status == SQLITE_ROW {
+                rows += 1
+                defer { status = sqlite3_step(statement) }
                 guard let text = sqlite3_column_text(statement, 0), let data = String(cString: text).data(using: .utf8),
-                      let v = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      v["name"] as? String == track.title, let album = v["album"] as? [String: Any],
-                      !track.album.isEmpty, album["name"] as? String == track.album,
-                      let artists = v["artists"] as? [[String: Any]],
+                      let item = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      item["name"] as? String == track.title,
+                      let album = item["album"] as? [String: Any],
+                      let artists = item["artists"] as? [[String: Any]],
                       artists.compactMap({ $0["name"] as? String }).joined(separator: "/") == track.artist,
-                      let ms = v["duration"] as? NSNumber, duration > 0, abs(ms.doubleValue / 1000 - duration) < 2 else { continue }
-                if let id = track.id, id.allSatisfy(\.isNumber), !id.isEmpty, String(describing: v["id"] ?? "") != id { continue }
-                guard let raw = album["picUrl"] as? String, var components = URLComponents(string: raw) else { continue }
-                components.scheme = "https"; components.query = "param=600y600"; components.fragment = nil
-                if let url = components.url, trusted(url) { urls.insert(url) }
+                      let milliseconds = item["duration"] as? NSNumber,
+                      duration <= 0 || abs(milliseconds.doubleValue / 1000 - duration) < 2 else { continue }
+                if let trackID, String(describing: item["id"] ?? "") != trackID { continue }
+                if !verifyIdentity {
+                    guard !track.album.isEmpty, album["name"] as? String == track.album,
+                          let raw = album["picUrl"] as? String, var url = URLComponents(string: raw) else { continue }
+                    url.scheme = "https"
+                    guard let candidate = url.url, trusted(candidate) else { continue }
+                }
+                matches.append(album)
             }
-            if !urls.isEmpty { break }
+            if verifyIdentity {
+                // A capped or interrupted scan cannot establish that the match is unique.
+                if status != SQLITE_DONE || rows == limit { return nil }
+            } else if !matches.isEmpty { break }
         }
-        return urls.sorted { $0.absoluteString < $1.absoluteString }
+        return matches
     }
 }

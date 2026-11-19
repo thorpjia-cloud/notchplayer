@@ -135,7 +135,7 @@ struct SiriGlassSurface: View, Animatable {
                 StableBackdrop(expanded: true).clipShape(outline).opacity(reveal)
             }
             outline.fill(panelAppearance.surface).opacity(reveal)
-            artworkWash
+            if panelAppearance.usesArtworkBackground { artworkWash }
             // GeometryReader prevents the transition layer's fixed height from enlarging the collapsed background.
             GeometryReader { geometry in
                 VStack(spacing: 0) {
@@ -291,6 +291,25 @@ struct NotchMorph: AnimatableModifier {
     }
 }
 
+private struct PanelContentMotion: AnimatableModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var progress: CGFloat
+    var cover = false
+    var compact = false
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+    func body(content: Content) -> some View {
+        let reveal = compact ? GlassMotion.compactReveal(progress: progress) : GlassMotion.contentReveal(progress: progress)
+        content
+            .opacity(Double(reveal))
+            .allowsHitTesting(reveal > 0.95)
+            .scaleEffect(reduceMotion || !cover ? 1 : 0.86 + 0.14 * reveal, anchor: .topLeading)
+            .offset(y: reduceMotion || compact ? 0 : -8 * (1 - reveal))
+    }
+}
+
 private struct CompactWingReveal: AnimatableModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var progress: CGFloat
@@ -317,9 +336,14 @@ struct MusicView: View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
                 header
-                if model.expanded {
-                    controls.transition(.opacity.combined(with: .offset(y: -8)))
-                }
+                    .frame(width: model.layout.compactSize(hovering: model.hovering).width)
+                    .modifier(PanelContentMotion(progress: model.expanded ? 1 : 0, compact: true))
+                    .allowsHitTesting(!model.expanded)
+                    .accessibilityHidden(model.expanded)
+                controls
+                    .frame(width: model.layout.expandedSize.width)
+                    .allowsHitTesting(model.expanded)
+                    .accessibilityHidden(!model.expanded)
             }
             .modifier(NotchMorph(nativeGlassIsActive: model.nativeGlassIsActive, usesBlackHeader: model.usesBlackHeader, panelAppearance: panelAppearance,
                                  progress: model.expanded ? 1 : 0,
@@ -358,28 +382,27 @@ struct MusicView: View {
     }
     private var header: some View {
         HStack {
-            if !model.expanded {
-                cover(size: model.layout.compactArtworkSize).accessibilityLabel("展开音乐播放器")
-                    .modifier(CompactWingReveal(progress: model.musicVisible ? 1 : 0, inwardOffset: 12))
-                Spacer(minLength: 0)
-                bars.frame(width: 20, height: 16).accessibilityLabel(media.playing ? "正在播放" : "播放已暂停")
-                    .modifier(CompactWingReveal(progress: model.musicVisible ? 1 : 0, inwardOffset: -12))
-            }
+            cover(size: model.layout.compactArtworkSize, expanded: false).accessibilityLabel("展开音乐播放器")
+                .modifier(CompactWingReveal(progress: model.musicVisible ? 1 : 0, inwardOffset: 12))
+            Spacer(minLength: 0)
+            bars.frame(width: 20, height: 16).accessibilityLabel(media.playing ? "正在播放" : "播放已暂停")
+                .modifier(CompactWingReveal(progress: model.musicVisible ? 1 : 0, inwardOffset: -12))
         }
         // Keep the hardware notch area clear while the music controls sit below it.
         .padding(.horizontal, NotchLayout.compactOuterInset).frame(height: model.layout.topHeight)
     }
     private var controls: some View {
         HStack(alignment: .center, spacing: 16) {
-            cover(size: NotchLayout.expandedArtworkSize)
+            cover(size: NotchLayout.expandedArtworkSize, expanded: true)
                 .shadow(color: .black.opacity(0.25), radius: 7, y: 3)
+                .modifier(PanelContentMotion(progress: model.expanded ? 1 : 0, cover: true))
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
-                    MarqueeTitle(text: media.title, fontSize: 15, lineHeight: 18)
-                    MarqueeTitle(text: media.artist, fontSize: 11, weight: .regular, lineHeight: 14)
+                    MarqueeTitle(text: media.title, fontSize: 15, lineHeight: 18, active: model.expanded)
+                    MarqueeTitle(text: media.artist, fontSize: 11, weight: .regular, lineHeight: 14, active: model.expanded)
                         .foregroundStyle(.secondary)
                     if !media.album.isEmpty {
-                        MarqueeTitle(text: media.album, fontSize: 10, weight: .regular, lineHeight: 12)
+                        MarqueeTitle(text: media.album, fontSize: 10, weight: .regular, lineHeight: 12, active: model.expanded)
                             .foregroundStyle(.secondary)
                     }
                 }.frame(height: 44, alignment: .top)
@@ -421,22 +444,26 @@ struct MusicView: View {
                     .background { DeviceCornerBackground(fill: panelAppearance.deviceButtonFill) }
             }
             .frame(maxWidth: .infinity).frame(height: NotchLayout.expandedArtworkSize)
+            .modifier(PanelContentMotion(progress: model.expanded ? 1 : 0))
         }
         .padding(.horizontal, NotchCorners.topRadius * model.layout.topHeight / 32 + NotchCorners.contentInset)
         .padding(.vertical, NotchCorners.contentInset)
         .frame(height: NotchLayout.expandedContentHeight)
     }
-    private func cover(size: CGFloat) -> some View {
+    private func cover(size: CGFloat, expanded: Bool) -> some View {
         Group {
-            if let artwork = media.artwork { Image(nsImage: artwork).resizable().scaledToFill() }
-            else {
+            if let artwork = media.artwork {
+                Image(nsImage: artwork).resizable().scaledToFill()
+                    .onAppear { ArtworkJournal.shared.mark("view_image", channel: "view") }
+            } else {
                 ZStack {
                     LinearGradient(colors: [.gray.opacity(0.2), .black], startPoint: .topLeading, endPoint: .bottomTrailing)
                     Image(systemName: "music.note").font(.system(size: size * 0.32)).foregroundStyle(.white.opacity(0.55))
                 }
+                .onAppear { ArtworkJournal.shared.mark("view_default", channel: "view") }
             }
         }.frame(width: size, height: size)
-            .modifier(ArtworkCornerClip(expanded: model.expanded, size: size, topHeight: model.layout.topHeight))
+            .modifier(ArtworkCornerClip(expanded: expanded, size: size, topHeight: model.layout.topHeight))
     }
     private var bars: some View {
         SpectrumBars(spectrum: media.spectrum,
@@ -556,8 +583,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let media = MediaService()
     let appUpdater = AppUpdater()
     let menuBarAppearance = MenuBarAppearance()
-    lazy var settings = SettingsWindowController(updater: appUpdater, menuBarAppearance: menuBarAppearance)
+    let expandedPanel = ExpandedPanelSettings()
+    lazy var settings = SettingsWindowController(updater: appUpdater, menuBarAppearance: menuBarAppearance,
+                                                 expandedPanel: expandedPanel)
     private var appearanceSubscription: AnyCancellable?
+    private var panelStyleSubscription: AnyCancellable?
     private var launchedAtLogin = false
     var panel: NookPanel!
     var mouseTimer: Timer?
@@ -594,7 +624,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
         panel.isMovable = false; panel.hidesOnDeactivate = false; panel.isReleasedWhenClosed = false
         panel.isFloatingPanel = true; panel.becomesKeyOnlyIfNeeded = true
-        panel.appearance = nil
+        // Keep the material ready while collapsed so the first animation frame has the selected appearance.
+        panel.appearance = expandedPanel.style.appearance
+        panelStyleSubscription = expandedPanel.$style.removeDuplicates().sink { [weak self] style in
+            guard let self else { return }
+            self.panel.appearance = style.appearance
+        }
         panel.title = "notchplayer · 音乐"
         panel.delegate = self
         let hostingView = NookHostingView(rootView: MusicView(model: model, media: media))
@@ -821,6 +856,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc func quit() { NSApp.terminate(nil) }
     func applicationWillTerminate(_ notification: Notification) {
         appearanceSubscription?.cancel()
+        panelStyleSubscription?.cancel()
         menuBarAppearance.stop()
         presenceSubscription?.cancel()
         media.stop(); mouseTimer?.invalidate(); focusRelease?.cancel()

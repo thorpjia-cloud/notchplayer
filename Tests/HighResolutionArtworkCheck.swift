@@ -30,9 +30,11 @@ final class DelayedArtwork: URLProtocol {
         let dbURL=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString+".sqlite")
         defer {try? FileManager.default.removeItem(at:dbURL)}
         var db: OpaquePointer?;sqlite3_open(dbURL.path,&db)
-        sqlite3_exec(db,"CREATE TABLE dbTrack(jsonStr TEXT);",nil,nil,nil)
-        for title in ["red","blue","redAgain","redPending"] {
-            let v:[String:Any]=["name":title,"id":title,"duration":100000,"artists":[["name":"artist"]],"album":["name":"album","picUrl":"https://p4.music.126.net/"+title+".png"]]
+        sqlite3_exec(db,"CREATE TABLE dbTrack(jsonStr TEXT); CREATE TABLE historyTracks(jsonStr TEXT, playtime INTEGER);",nil,nil,nil)
+        for (title, artist, albumID) in [("red", "artist", "10"), ("blue", "artist", "20"),
+            ("redAgain", "artist", "10"), ("redPending", "artist", "10"), ("collab", "guest", "10"),
+            ("ambiguous", "guest", "10"), ("ambiguous", "guest", "20"), ("missingAlbumID", "guest", "")] {
+            let v:[String:Any]=["name":title,"id":title,"duration":100000,"artists":[["name":artist]],"album":["id":albumID,"name":"album","picUrl":"https://p4.music.126.net/"+title+".png"]]
             let json=String(data:try JSONSerialization.data(withJSONObject:v),encoding:.utf8)!
             var stmt:OpaquePointer?;sqlite3_prepare_v2(db,"INSERT INTO dbTrack VALUES (?)",-1,&stmt,nil)
             _=json.withCString{sqlite3_bind_text(stmt,1,$0,-1,unsafeBitCast(-1,to:sqlite3_destructor_type.self))};sqlite3_step(stmt);sqlite3_finalize(stmt)
@@ -41,6 +43,17 @@ final class DelayedArtwork: URLProtocol {
         func track(_ title:String)->ArtworkState.Track { ArtworkState.Track(["title":title,"artist":"artist","album":"album","bundleIdentifier":"com.netease.163music"])! }
         precondition(HighResolutionArtwork.sources(track:track("red"),duration:100,database:dbURL).count==1)
         precondition(HighResolutionArtwork.sources(track:track("red"),duration:120,database:dbURL).isEmpty)
+        func albumComparison(_ title: String, artist: String = "guest") -> HighResolutionArtwork.AlbumComparison {
+            let other = ArtworkState.Track(["title": title, "artist": artist, "album": "stale name",
+                "bundleIdentifier": ArtworkState.Track.netEaseSource])!
+            let handoff = ArtworkState.AlbumHandoff(previous: .init(track: track("red"), duration: 100),
+                current: .init(track: other, duration: 100), encoded: "shared-cover")
+            return HighResolutionArtwork.compareAlbums(for: handoff, database: dbURL)
+        }
+        precondition(albumComparison("collab") == .same)
+        precondition(albumComparison("blue", artist: "artist") == .different)
+        precondition(albumComparison("ambiguous") == .unverified)
+        precondition(albumComparison("missingAlbumID") == .unverified)
         let config=URLSessionConfiguration.ephemeral;config.protocolClasses=[DelayedArtwork.self]
         let resolver=HighResolutionArtwork(database:dbURL,session:URLSession(configuration:config));var accepted:[String]=[]
         resolver.resolve(track:track("red"),reference:red,duration:100){_ in accepted.append("red")}

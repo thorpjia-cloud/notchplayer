@@ -7,20 +7,23 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     let updater: AppUpdater
     private let loginItem = LoginItemSettings()
     private let menuBarAppearance: MenuBarAppearance
+    private let expandedPanel: ExpandedPanelSettings
 
-    init(updater: AppUpdater, menuBarAppearance: MenuBarAppearance) {
+    init(updater: AppUpdater, menuBarAppearance: MenuBarAppearance, expandedPanel: ExpandedPanelSettings) {
         self.updater = updater
         self.menuBarAppearance = menuBarAppearance
+        self.expandedPanel = expandedPanel
     }
 
     func show() {
         if window == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 640),
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 672),
                                   styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
             window.title = "notchplayer 设置"
             window.isReleasedWhenClosed = false
             window.delegate = self
-            window.contentView = NSHostingView(rootView: SettingsView(updater: updater, loginItem: loginItem, menuBarAppearance: menuBarAppearance))
+            window.contentView = NSHostingView(rootView: SettingsView(updater: updater, loginItem: loginItem,
+                menuBarAppearance: menuBarAppearance, expandedPanel: expandedPanel))
             window.center()
             self.window = window
         }
@@ -43,6 +46,7 @@ private struct SettingsView: View {
     @ObservedObject var updater: AppUpdater
     @ObservedObject var loginItem: LoginItemSettings
     @ObservedObject var menuBarAppearance: MenuBarAppearance
+    @ObservedObject var expandedPanel: ExpandedPanelSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -71,6 +75,9 @@ private struct SettingsView: View {
             }
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
+                    Picker("展开面板外观", selection: $expandedPanel.style) {
+                        ForEach(ExpandedPanelStyle.allCases) { style in Text(style.title).tag(style) }
+                    }
                     Picker("菜单栏样式", selection: Binding(get: { menuBarAppearance.style }, set: menuBarAppearance.setStyle)) {
                         ForEach(MenuBarStyle.allCases) { style in Text(style.title).tag(style) }
                     }
@@ -123,7 +130,7 @@ private struct SettingsView: View {
         }
         .padding(26)
         .frame(width: 520, alignment: .topLeading)
-        .frame(minHeight: 640)
+        .frame(minHeight: 672)
         .background(Color(nsColor: .windowBackgroundColor))
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             loginItem.refresh()
