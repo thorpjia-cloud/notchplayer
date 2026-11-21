@@ -40,6 +40,7 @@ final class MediaService: ObservableObject {
     private var timestamp = Date()
     private var rate: Double = 1
     private var stream: Process?
+    private var listenerRetries = 0
     private var buffer = Data()
     private var commands: [Process] = []
     private var stopped = false
@@ -50,11 +51,8 @@ final class MediaService: ObservableObject {
     private var framework: URL { resources.appendingPathComponent("MediaRemoteAdapter.framework") }
 
     func start() {
-        journal.session += 1
-        journal.mark("listener_start")
         stopped = false
-        let connection = UUID()
-        connectionID = connection
+        listenerRetries = 0
         volume.start()
         terminationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
@@ -66,6 +64,15 @@ final class MediaService: ObservableObject {
             self.journal.mark("player_exit")
             self.clearPlayback()
         }
+        startListener()
+    }
+    private func startListener() {
+        journal.session += 1
+        journal.mark("listener_start")
+        let connection = UUID()
+        let launchedAt = ProcessInfo.processInfo.systemUptime
+        connectionID = connection
+        buffer.removeAll()
         let process = makeProcess(["stream", "--no-diff", "--micros", "--debounce=100"])
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -85,17 +92,36 @@ final class MediaService: ObservableObject {
                 }
             }
         }
-        process.terminationHandler = { [weak self] _ in
+        process.terminationHandler = { [weak self] process in
             DispatchQueue.main.async {
-                guard let self, self.connectionID == connection, !self.stopped else { return }
-                self.journal.mark("listener_disconnect")
+                guard let self, self.connectionID == connection, !self.stopped,
+                      self.stream === process else { return }
+                self.stream = nil
+                if ProcessInfo.processInfo.systemUptime - launchedAt >= 10 { self.listenerRetries = 0 }
+                self.journal.mark("listener_disconnect", "status=\(process.terminationStatus)")
                 self.artworkState.beginGap(now: ProcessInfo.processInfo.systemUptime)
                 self.refreshArtwork()
                 self.error = "音乐连接已断开，请从菜单重新连接"
+                self.retryListener(after: connection)
             }
         }
         do { try process.run(); stream = process }
-        catch { journal.mark("listener_start_failed"); self.error = "无法连接系统正在播放" }
+        catch {
+            journal.mark("listener_start_failed")
+            self.error = "无法连接系统正在播放"
+            retryListener(after: connection)
+        }
+        // Re-arm the existing deadline against the new connection, without extending it.
+        if artworkState.expiresAt != nil { refreshArtwork() }
+    }
+    private func retryListener(after connection: UUID) {
+        guard listenerRetries < 3 else { return }
+        listenerRetries += 1
+        journal.mark("listener_retry", "attempt=\(listenerRetries)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(250 * listenerRetries)) { [weak self] in
+            guard let self, !self.stopped, self.connectionID == connection, self.stream == nil else { return }
+            self.startListener()
+        }
     }
     func stop() {
         journal.mark("listener_stop")

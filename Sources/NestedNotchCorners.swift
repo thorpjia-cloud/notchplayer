@@ -42,14 +42,29 @@ struct DeviceCornerBackground: View {
         ResolvedContinuousCorner(radius: NotchCorners.contentRadius).fill(fill)
     }
 }
-struct ArtworkCornerClip: ViewModifier {
+struct ArtworkSurface: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
     var expanded: Bool
     var size: CGFloat
     var topHeight: CGFloat
     @ViewBuilder func body(content: Content) -> some View {
         if expanded {
-            // The single visible mask uses the actual outer radius minus the cover inset.
-            content.clipShape(ResolvedContinuousCorner(radius: NotchCorners.contentRadius))
+            let outline = ResolvedContinuousCorner(radius: NotchCorners.contentRadius)
+            let isDark = colorScheme == .dark
+            content.clipShape(outline)
+                .shadow(color: .black.opacity(isDark ? 0.30 : 0.20), radius: 5, y: 3)
+                .shadow(color: .black.opacity(isDark ? 0.23 : 0.16), radius: 1.25, y: 1)
+                .overlay {
+                    // Keep the thin reflection inside the existing artwork clip.
+                    outline.stroke(
+                        LinearGradient(colors: [.white.opacity(isDark ? 0.35 : 0.22), .clear],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        lineWidth: 1
+                    )
+                    .clipShape(outline)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
         } else {
             // The detached compact thumbnail is an independent control, not a copy of the concave notch.
             content.clipShape(RoundedRectangle(cornerRadius: NotchCorners.radius * min(1, size / 48) * topHeight / 32, style: .continuous))

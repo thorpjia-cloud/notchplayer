@@ -394,7 +394,6 @@ struct MusicView: View {
     private var controls: some View {
         HStack(alignment: .center, spacing: 16) {
             cover(size: NotchLayout.expandedArtworkSize, expanded: true)
-                .shadow(color: .black.opacity(0.25), radius: 7, y: 3)
                 .modifier(PanelContentMotion(progress: model.expanded ? 1 : 0, cover: true))
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -463,7 +462,7 @@ struct MusicView: View {
                 .onAppear { ArtworkJournal.shared.mark("view_default", channel: "view") }
             }
         }.frame(width: size, height: size)
-            .modifier(ArtworkCornerClip(expanded: expanded, size: size, topHeight: model.layout.topHeight))
+            .modifier(ArtworkSurface(expanded: expanded, size: size, topHeight: model.layout.topHeight))
     }
     private var bars: some View {
         SpectrumBars(spectrum: media.spectrum,
