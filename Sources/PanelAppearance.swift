@@ -42,7 +42,6 @@ struct PanelAppearance {
     let artworkColor: NSColor
 
     private var isDark: Bool { colorScheme == .dark }
-    var usesArtworkBackground: Bool { !isDark }
     private var backgroundWhite: CGFloat { isDark ? 0.09 : 0.97 }
     private var backgroundOpacity: CGFloat { isDark ? 0.90 : 0.88 }
 
@@ -54,23 +53,10 @@ struct PanelAppearance {
         isDark ? .white.opacity(0.10) : .black.opacity(0.06)
     }
 
-    var headerTint: Color { Color(nsColor: artworkColor).opacity(0.02) }
-
-    var artworkWash: LinearGradient {
-        let tint = Color(nsColor: artworkColor)
-        return LinearGradient(stops: [
-            .init(color: tint.opacity(0.02), location: 0),
-            .init(color: tint.opacity(0.045), location: 0.25),
-            .init(color: tint.opacity(0.075), location: 0.55),
-            .init(color: tint.opacity(0.10), location: 0.80),
-            .init(color: tint.opacity(0.085), location: 1)
-        ], startPoint: .top, endPoint: .bottom)
-    }
-
     var progressTint: Color {
         let ink = NSColor(srgbRed: isDark ? 1 : 0, green: isDark ? 1 : 0, blue: isDark ? 1 : 0, alpha: 1)
         guard let artwork = artworkColor.usingColorSpace(.sRGB) else { return Color(nsColor: ink) }
-        // Use the lowest-contrast background that can result from desktop bleed and the artwork wash.
+        // Keep a conservative contrast margin for the desktop showing through the glass.
         let desktop: CGFloat = isDark ? 1 : 0
         let base = backgroundWhite * backgroundOpacity + desktop * (1 - backgroundOpacity)
         let reference = Self.linearize(base * 0.90 + desktop * 0.10)

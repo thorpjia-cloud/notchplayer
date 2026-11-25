@@ -5,7 +5,7 @@ enum ArtworkPalette {
         let primary: NSColor
         let secondary: NSColor
 
-        // Dark-to-light ordering is independent of which hue supplies the panel tint.
+        // Dark-to-light waveform ordering is independent of the progress tint.
         var waveformTop: NSColor { brightness(primary) <= brightness(secondary) ? primary : secondary }
         var waveformBottom: NSColor { brightness(primary) <= brightness(secondary) ? secondary : primary }
 

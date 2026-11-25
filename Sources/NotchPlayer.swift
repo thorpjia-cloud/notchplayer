@@ -135,7 +135,6 @@ struct SiriGlassSurface: View, Animatable {
                 StableBackdrop(expanded: true).clipShape(outline).opacity(reveal)
             }
             outline.fill(panelAppearance.surface).opacity(reveal)
-            if panelAppearance.usesArtworkBackground { artworkWash }
             // GeometryReader prevents the transition layer's fixed height from enlarging the collapsed background.
             GeometryReader { geometry in
                 VStack(spacing: 0) {
@@ -160,20 +159,6 @@ struct SiriGlassSurface: View, Animatable {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-    }
-
-    private var artworkWash: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 0) {
-                panelAppearance.headerTint
-                    .opacity(usesBlackHeader ? 0 : 1)
-                    .frame(height: min(topHeight, geometry.size.height))
-                panelAppearance.artworkWash
-            }
-        }
-        .animation(.easeInOut(duration: 0.35), value: panelAppearance.artworkColor)
-        .clipShape(outline)
-        .opacity(reveal)
     }
 }
 

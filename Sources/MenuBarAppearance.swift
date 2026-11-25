@@ -40,7 +40,7 @@ final class MenuBarAppearance: ObservableObject {
             if wallpaperIsDark == nil { return "当前：未取得可靠的菜单栏背景信息，使用连续玻璃。" }
             return usesBlackHeader ? "当前：顶部接近黑色，保留黑色渐变。" : "当前：顶部未满足近黑色条件，使用连续玻璃。"
         }
-        return usesBlackHeader ? "展开后菜单栏区域纯黑，向下过渡到玻璃。" : "展开后顶部与下方共用透明玻璃和专辑染色。"
+        return usesBlackHeader ? "展开后菜单栏区域纯黑，向下过渡到玻璃。" : "展开后顶部与下方共用透明玻璃。"
     }
 
     func start() {
