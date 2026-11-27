@@ -43,18 +43,19 @@ struct PanelAppearance {
 
     private var isDark: Bool { colorScheme == .dark }
     private var backgroundWhite: CGFloat { isDark ? 0.09 : 0.97 }
-    private var backgroundOpacity: CGFloat { isDark ? 0.90 : 0.88 }
+    private var progressReferenceOpacity: CGFloat { isDark ? 0.90 : 0.88 }
 
     var surface: Color {
-        Color(nsColor: NSColor(srgbRed: backgroundWhite, green: backgroundWhite, blue: backgroundWhite, alpha: backgroundOpacity))
+        let opacity: CGFloat = isDark ? progressReferenceOpacity : 0.50
+        return Color(nsColor: NSColor(srgbRed: backgroundWhite, green: backgroundWhite, blue: backgroundWhite, alpha: opacity))
     }
 
     var progressTint: Color {
         let ink = NSColor(srgbRed: isDark ? 1 : 0, green: isDark ? 1 : 0, blue: isDark ? 1 : 0, alpha: 1)
         guard let artwork = artworkColor.usingColorSpace(.sRGB) else { return Color(nsColor: ink) }
-        // Keep a conservative contrast margin for the desktop showing through the glass.
+        // Keep the progress tint on its existing contrast reference while testing the lighter surface.
         let desktop: CGFloat = isDark ? 1 : 0
-        let base = backgroundWhite * backgroundOpacity + desktop * (1 - backgroundOpacity)
+        let base = backgroundWhite * progressReferenceOpacity + desktop * (1 - progressReferenceOpacity)
         let reference = Self.linearize(base * 0.90 + desktop * 0.10)
         for step in 0...10 {
             let fraction = CGFloat(step) / 10
