@@ -49,10 +49,6 @@ struct PanelAppearance {
         Color(nsColor: NSColor(srgbRed: backgroundWhite, green: backgroundWhite, blue: backgroundWhite, alpha: backgroundOpacity))
     }
 
-    var deviceButtonFill: Color {
-        isDark ? .white.opacity(0.10) : .black.opacity(0.06)
-    }
-
     var progressTint: Color {
         let ink = NSColor(srgbRed: isDark ? 1 : 0, green: isDark ? 1 : 0, blue: isDark ? 1 : 0, alpha: 1)
         guard let artwork = artworkColor.usingColorSpace(.sRGB) else { return Color(nsColor: ink) }

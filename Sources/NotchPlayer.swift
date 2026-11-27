@@ -15,7 +15,7 @@ final class NookModel: ObservableObject {
     @Published var pinned = false
     @Published var hovering = false
     @Published var scrubbing = false
-    private(set) var outputPickerPresented = false
+    @Published private(set) var outputPickerPresented = false
     weak var outputPickerButton: NSButton?
     @Published var dragX: CGFloat = 0
     @Published var dragY: CGFloat = 0
@@ -76,7 +76,7 @@ final class NookModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
     }
     func setOutputPickerPresented(_ presented: Bool) {
-        outputPickerPresented = presented
+        if outputPickerPresented != presented { outputPickerPresented = presented }
         if presented { closeWork?.cancel() } else { scheduleClose() }
     }
 }
@@ -425,7 +425,7 @@ struct MusicView: View {
                 AudioOutputPicker(volume: media.volume, presentationChanged: model.setOutputPickerPresented,
                                   buttonReady: { model.outputPickerButton = $0 }, showsName: true)
                     .frame(maxWidth: .infinity).frame(height: 40)
-                    .background { DeviceCornerBackground(fill: panelAppearance.deviceButtonFill) }
+                    .background { DeviceCornerBackground(isPressed: model.outputPickerPresented) }
             }
             .frame(maxWidth: .infinity).frame(height: NotchLayout.expandedArtworkSize)
             .modifier(PanelContentMotion(progress: model.expanded ? 1 : 0))
@@ -497,6 +497,7 @@ struct PlaybackProgressControl: View {
 }
 
 struct VolumeControl: View {
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var volume: OutputVolume
     var editingChanged: (Bool) -> Void
     var body: some View {
@@ -506,6 +507,7 @@ struct VolumeControl: View {
                 .frame(width: 14).accessibilityHidden(true)
             Slider(value: Binding(get: { volume.value }, set: { volume.set($0) }), in: 0...1,
                    onEditingChanged: editingChanged)
+                .tint(Color(white: colorScheme == .dark ? 0.60 : 0.35))
                 .controlSize(.mini)
                 .disabled(!volume.available)
                 .accessibilityLabel("系统输出音量")

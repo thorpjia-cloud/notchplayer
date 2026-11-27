@@ -35,11 +35,34 @@ struct NotchCornerContainer: ViewModifier {
 }
 
 struct DeviceCornerBackground: View {
-    let fill: Color
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let isPressed: Bool
 
     var body: some View {
-        // Use the inset radius on all four corners without resolving against the container again.
-        ResolvedContinuousCorner(radius: NotchCorners.contentRadius).fill(fill)
+        let outline = ResolvedContinuousCorner(radius: NotchCorners.contentRadius)
+        let isDark = colorScheme == .dark
+        let relief = isPressed ? 0.32 : 1.0
+        let rimStrength = isPressed ? 0.5 : 1.0
+        let bottom = isDark ? 0.17 : 0.88
+        let top = bottom + (isDark ? 0.07 : 0.075) * relief
+        let shadow = (isDark ? 0.40 : 0.11) * relief
+
+        outline.fill(LinearGradient(colors: [Color(white: top), Color(white: bottom)],
+                                    startPoint: .top, endPoint: .bottom))
+            .shadow(color: .black.opacity(shadow), radius: isPressed ? 0.6 : 1.45,
+                    y: isPressed ? 0.35 : (isDark ? 1.65 : 1))
+            .overlay {
+                outline.stroke(LinearGradient(colors: [
+                    .white.opacity((isDark ? 0.29 : 0.78) * rimStrength),
+                    .clear,
+                    .black.opacity((isDark ? 0.46 : 0.12) * rimStrength)
+                ], startPoint: .top, endPoint: .bottom), lineWidth: 1.25)
+                .clipShape(outline)
+            }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isPressed)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 struct ArtworkSurface: ViewModifier {
@@ -52,15 +75,16 @@ struct ArtworkSurface: ViewModifier {
             let outline = ResolvedContinuousCorner(radius: NotchCorners.contentRadius)
             let isDark = colorScheme == .dark
             content.clipShape(outline)
-                .shadow(color: .black.opacity(isDark ? 0.30 : 0.20), radius: 5, y: 3)
-                .shadow(color: .black.opacity(isDark ? 0.23 : 0.16), radius: 1.25, y: 1)
+                .shadow(color: .black.opacity(isDark ? 0.40 : 0.25), radius: 5.2, x: 0.8, y: 4)
+                .shadow(color: .black.opacity(isDark ? 0.46 : 0.27), radius: 1.45, x: 0.3, y: 1.6)
                 .overlay {
-                    // Keep the thin reflection inside the existing artwork clip.
-                    outline.stroke(
-                        LinearGradient(colors: [.white.opacity(isDark ? 0.35 : 0.22), .clear],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing),
-                        lineWidth: 1
-                    )
+                    // A thin rim catches the light above and shades the lower edge.
+                    outline.stroke(LinearGradient(stops: [
+                        .init(color: .white.opacity(isDark ? 0.58 : 0.49), location: 0),
+                        .init(color: .white.opacity(0.14), location: 0.43),
+                        .init(color: .clear, location: 0.58),
+                        .init(color: .black.opacity(0.62), location: 1)
+                    ], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.5)
                     .clipShape(outline)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
